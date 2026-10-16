@@ -1,0 +1,11 @@
+{
+  "lazarusnpcs.survivor": "Survivor Barter",
+  "lazarusnpcs.medic": "Field Medic",
+  "lazarusnpcs.military": "Military Supplies",
+  "lazarusnpcs.busy": "This survivor is negotiating with someone else.",
+  "lazarusnpcs.treated": "The medic treated your wounds.",
+  "lazarusnpcs.treatment_offer": "Field treatment + bandage (%s HP)",
+  "lazarusnpcs.refused": "They refuse to trade with you after your attacks. Trust recovers over time.",
+  "subtitles.lazarusnpcs.survivor_greeting": "Survivor speaks",
+  "subtitles.lazarusnpcs.military_greeting": "Soldier speaks"
+}

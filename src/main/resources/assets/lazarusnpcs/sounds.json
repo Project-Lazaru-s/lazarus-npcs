@@ -1,0 +1,10 @@
+{
+  "survivor_greeting": {
+    "subtitle": "subtitles.lazarusnpcs.survivor_greeting",
+    "sounds": ["lazarusnpcs:survivor_greeting"]
+  },
+  "military_greeting": {
+    "subtitle": "subtitles.lazarusnpcs.military_greeting",
+    "sounds": ["lazarusnpcs:military_greeting"]
+  }
+}

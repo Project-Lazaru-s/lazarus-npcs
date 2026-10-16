@@ -1,0 +1,19 @@
+.gradle/
+build/
+run/
+out/
+.idea/
+.settings/
+.classpath
+.project
+*.iml
+*.launch
+run-data/
+
+# Third-party mod JARs copied from the profile for compiling and GameTests (never redistributed)
+libs/
+# Local profile backups and voice work files
+profile-backups/
+work-*.mp3
+# Profile installer with local paths (kept out of the repository)
+scripts/apply-profile-*.ps1
