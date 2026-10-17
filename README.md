@@ -67,6 +67,12 @@ O mod não cria novas entidades nem altera o JAR do Apocalypse Now. Tudo é feit
 
 ## Tarefas e serviços
 
+### Survivor Stories (v1.2.0)
+
+Five rare written clues now appear in existing hospital, military, market, house and abandoned-cabin loot. Read a clue to record an approximate location in the inventory journal's **Stories** tab. Each clue first seeks an unopened structure chest outside the player's view; when none is available it creates a small cache on unoccupied natural ground. Rereading cannot create another cache. Arriving within half a Minecraft day finds a living survivor, more supplies and a small faction reputation gain upon reaching the cache. Arriving later finds infected and a diminished cache. The final record can also close the story, but losing it cannot trap progress. Progress survives relogs and death. A radio event can also reveal a story to a player carrying the Immersive Frequencies walkie-talkie.
+
+Operator test command: `/lazarusnpcs story note <clinic|convoy|market|ranger|shelter>`. Give the note to a Survival player, read it, visit the journal and find the cache. The scene is created only when a safe, loaded spot is available; otherwise read the note again elsewhere. Existing generated chests do not gain new notes retroactively.
+
 **Tarefas.** Clique agachado em um sobrevivente, médico ou militar com a mão vazia, ou use a aba **Tasks**. Os pedidos variam por papel e facção: comida, água, pano, sucata, suprimentos médicos ou infectados abatidos nas redondezas. Entregue a qualquer NPC do mesmo papel e facção. Uma tarefa por vez, válida por 48.000 ticks, com espera de 6.000 ticks para repetir o mesmo papel. As recompensas usam itens do Apocalypse Now e do TaCZ e aumentam a reputação.
 
 **Serviços.** Disponíveis na aba **Services** ou com `/lazarusnpcs services`, a até seis blocos do NPC:

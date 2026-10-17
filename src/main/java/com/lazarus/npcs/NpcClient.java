@@ -22,7 +22,7 @@ public final class NpcClient {
     private static UUID lastNpc;
     private static int lastTab;
     private static int guardRadius = 1;
-    private static boolean journalContracts;
+    private static int journalTab;
 
     private NpcClient() {}
 
@@ -141,16 +141,20 @@ public final class NpcClient {
         @Override protected void init() {
             addRenderableWidget(Button.builder(Component.literal("Back"), button -> onClose())
                     .bounds(left() + 202, top() + 8, 42, 16).build());
-            addRenderableWidget(Button.builder(Component.literal(journalContracts ? "Task" : "Contracts"), button -> {
-                journalContracts = !journalContracts;
+            addRenderableWidget(Button.builder(Component.literal(switch (journalTab) {
+                case 1 -> "Contracts";
+                case 2 -> "Stories";
+                default -> "Task";
+            }), button -> {
+                journalTab = (journalTab + 1) % 3;
                 rebuildWidgets();
             }).bounds(left() + 138, top() + 8, 60, 16).build());
-            if (journalContracts) {
+            if (journalTab == 1) {
                 if (!view.contract().startsWith("No active"))
                     addRenderableWidget(Button.builder(Component.literal("Release all contracts"), button ->
                             NpcNetwork.send("releaseall", new UUID(0, 0)))
                             .bounds(left() + 60, top() + 168, 136, 18).build());
-            } else if (!"No active task".equals(view.task()))
+            } else if (journalTab == 0 && !"No active task".equals(view.task()))
                 addRenderableWidget(Button.builder(Component.literal("Abandon task"), button ->
                         NpcNetwork.send("abandon", new UUID(0, 0)))
                         .bounds(left() + 75, top() + 93, 105, 18).build());
@@ -164,7 +168,17 @@ public final class NpcClient {
         @Override public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
             super.render(graphics, mouseX, mouseY, partialTick);
             label(graphics, "LAZARUS / JOURNAL", 17, 13, 0xFFE4D9C8);
-            if (journalContracts) {
+            if (journalTab == 2) {
+                label(graphics, "DISCOVERED STORIES", 20, 39, 0xFFD4A185);
+                int y = 56;
+                for (String story : view.stories().split("\\n")) {
+                    wrapped(graphics, story, 20, y, 215, 0xFFF1EADD, 2);
+                    y += 26;
+                    if (y > 174) break;
+                }
+                return;
+            }
+            if (journalTab == 1) {
                 label(graphics, "ESCORTS AND GUARDS", 20, 39, 0xFFD4A185);
                 int y = 55;
                 for (String line : view.contract().split(" \\| ")) {

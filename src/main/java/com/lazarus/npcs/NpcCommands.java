@@ -6,6 +6,7 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.arguments.coordinates.Vec3Argument;
+import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -31,6 +32,27 @@ public final class NpcCommands {
     @SubscribeEvent
     public static void register(RegisterCommandsEvent event) {
         event.getDispatcher().register(Commands.literal("lazarusnpcs")
+                .then(Commands.literal("story")
+                        .then(Commands.literal("signal")
+                                .requires(source -> source.hasPermission(2))
+                                .then(Commands.argument("id", StringArgumentType.word())
+                                        .suggests((context, builder) -> SharedSuggestionProvider.suggest(
+                                                java.util.List.of("clinic", "convoy", "market", "ranger", "shelter"), builder))
+                                        .then(Commands.argument("player", EntityArgument.player())
+                                                .executes(context -> NpcStories.start(EntityArgument.getPlayer(context, "player"),
+                                                        StringArgumentType.getString(context, "id")) ? 1 : 0))))
+                        .then(Commands.literal("note")
+                                .requires(source -> source.hasPermission(2))
+                                .then(Commands.argument("id", StringArgumentType.word())
+                                        .suggests((context, builder) -> SharedSuggestionProvider.suggest(
+                                                java.util.List.of("clinic", "convoy", "market", "ranger", "shelter"), builder))
+                                        .executes(context -> {
+                                            var player = context.getSource().getPlayerOrException();
+                                            var note = NpcStories.note(StringArgumentType.getString(context, "id"), false);
+                                            if (note.isEmpty()) return 0;
+                                            player.getInventory().placeItemBackInInventory(note);
+                                            return 1;
+                                        }))))
                 .then(Commands.literal("reputation")
                         .executes(context -> reputation(context.getSource()))
                         .then(Commands.literal("set")
