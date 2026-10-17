@@ -155,9 +155,9 @@ public final class NpcClient {
                             NpcNetwork.send("releaseall", new UUID(0, 0)))
                             .bounds(left() + 60, top() + 168, 136, 18).build());
             } else if (journalTab == 0 && !"No active task".equals(view.task()))
-                addRenderableWidget(Button.builder(Component.literal("Abandon task"), button ->
+                addRenderableWidget(Button.builder(Component.literal("Abandon"), button ->
                         NpcNetwork.send("abandon", new UUID(0, 0)))
-                        .bounds(left() + 75, top() + 93, 105, 18).build());
+                        .bounds(left() + 178, top() + 95, 60, 16).build());
         }
 
         @Override public void onClose() {
@@ -189,6 +189,9 @@ public final class NpcClient {
             }
             label(graphics, "CURRENT TASK", 20, 39, 0xFFD4A185);
             wrapped(graphics, view.task(), 20, 55, 215, 0xFFF1EADD, 3);
+            String[] where = view.taskLocation().split("\n");
+            for (int i = 0; i < where.length && !where[0].isEmpty(); i++)
+                label(graphics, font.plainSubstrByWidth(where[i], 152), 20, 93 + i * 11, i == 0 ? 0xFFD4A185 : 0xFFB9A995);
             graphics.fill(left() + 18, top() + 117, left() + 238, top() + 118, 0xFF7B473A);
             label(graphics, "FACTION REPUTATION", 20, 124, 0xFFD4A185);
             for (int i = 0; i < NpcIdentity.FACTIONS.length; i++) {

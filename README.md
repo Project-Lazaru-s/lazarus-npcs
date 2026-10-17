@@ -6,7 +6,7 @@
   <img alt="Minecraft 1.20.1" src="https://img.shields.io/badge/Minecraft-1.20.1-3c8527">
   <img alt="Forge 47.x" src="https://img.shields.io/badge/Forge-47.x-dd7d2b">
   <img alt="Java 17" src="https://img.shields.io/badge/Java-17-b07219">
-  <img alt="Versão 1.1.0" src="https://img.shields.io/badge/vers%C3%A3o-1.1.0-6b5b3e">
+  <img alt="Versão 1.4.0" src="https://img.shields.io/badge/vers%C3%A3o-1.4.0-6b5b3e">
 </p>
 
 # Lazarus NPCs
@@ -73,7 +73,7 @@ Five rare written clues now appear in existing hospital, military, market, house
 
 Operator test command: `/lazarusnpcs story note <clinic|convoy|market|ranger|shelter>`. Give the note to a Survival player, read it, visit the journal and find the cache. The scene is created only when a safe, loaded spot is available; otherwise read the note again elsewhere. Existing generated chests do not gain new notes retroactively.
 
-**Tarefas.** Clique agachado em um sobrevivente, médico ou militar com a mão vazia, ou use a aba **Tasks**. Os pedidos variam por papel e facção: comida, água, pano, sucata, suprimentos médicos ou infectados abatidos nas redondezas. Entregue a qualquer NPC do mesmo papel e facção. Uma tarefa por vez, válida por 48.000 ticks, com espera de 6.000 ticks para repetir o mesmo papel. As recompensas usam itens do Apocalypse Now e do TaCZ e aumentam a reputação.
+**Tarefas.** Clique agachado em um sobrevivente, médico ou militar com a mão vazia, ou use a aba **Tasks**. Os pedidos variam por papel e facção: comida, água, pano, sucata, suprimentos médicos ou infectados abatidos nas redondezas. Entregue a qualquer NPC do mesmo papel e facção. Ao aceitar, o diário anota quem deu a tarefa e as coordenadas onde ele estava, com a distância e a direção a partir de onde você está (ou a dimensão, se for outra); `/lazarusnpcs task` mostra o mesmo. Se quem deu a tarefa morrer, você recebe um aviso no chat e o diário mostra quem ou o que o matou; a tarefa continua valendo e pode ser entregue a outro NPC do mesmo grupo. Toda morte ou remoção de NPC humano fica registrada em `logs/latest.log` (linhas `[npc]`) com nome, tipo, posição e causa. Uma tarefa por vez, válida por 48.000 ticks, com espera de 6.000 ticks para repetir o mesmo papel. As recompensas usam itens do Apocalypse Now e do TaCZ e aumentam a reputação.
 
 **Serviços.** Disponíveis na aba **Services** ou com `/lazarusnpcs services`, a até seis blocos do NPC:
 
@@ -219,7 +219,7 @@ O script [`scripts/patch_soldier_loot.py`](scripts/patch_soldier_loot.py) ajusta
 
 ### Jogadores e servidores
 
-1. Baixe [`lazarusnpcs-1.0.0.jar`](dist/lazarusnpcs-1.0.0.jar) e instale os mods exigidos acima.
+1. Baixe [`lazarusnpcs-1.4.0.jar`](dist/lazarusnpcs-1.4.0.jar) e instale os mods exigidos acima.
 2. Coloque o JAR na pasta `mods` do perfil. No CurseForge, clique com o botão direito no perfil e escolha **Open Folder**.
 3. Em multiplayer, instale a **mesma versão** no servidor e em todos os clientes. Versões com protocolo diferente recusam a conexão em vez de falhar.
 4. Remova qualquer JAR antigo `lazarusnpcs` antes de atualizar e reinicie o Minecraft.

@@ -85,6 +85,8 @@ final class NpcTasks {
         task.putInt("X", npc.blockPosition().getX());
         task.putInt("Y", npc.blockPosition().getY());
         task.putInt("Z", npc.blockPosition().getZ());
+        task.putString("Giver", NpcIdentity.name(npc));
+        task.putUUID("GiverId", npc.getUUID());
         data.put(ACTIVE, task);
         save(player, data);
         say(player, "New encounter: " + description(task) + " Sneak and interact with any " + role
@@ -97,7 +99,7 @@ final class NpcTasks {
         CompoundTag task = active(data, time(player));
         save(player, data);
         say(player, task.isEmpty() ? "No active NPC task. Sneak and interact with a friendly NPC to get one."
-                : description(task));
+                : description(task) + " " + location(player).replace("\n", ", ") + ".");
     }
 
     static String summary(ServerPlayer player) {
@@ -110,6 +112,43 @@ final class NpcTasks {
         return owner + ": " + objective(task) + ". Reward: " + rewardDescription(task.getString("Kind"))
                 + reputationLabel(task.getString("Kind"), task.getString("Faction"))
                 + ". " + remaining + "m left";
+    }
+
+    /** Where the active task was taken, for the journal: giver, coordinates, and distance and direction from here. */
+    static String location(ServerPlayer player) {
+        CompoundTag task = player.getPersistentData().getCompound(DATA_KEY).getCompound(ACTIVE);
+        if (task.isEmpty() || !task.contains("X")) return "";
+        int x = task.getInt("X"), y = task.getInt("Y"), z = task.getInt("Z");
+        String dimension = task.getString("Dimension");
+        String giver = task.getString("Giver");
+        String owner = task.contains("Faction") && !"independent".equals(task.getString("Faction"))
+                ? " (" + NpcIdentity.label(task.getString("Faction")) + ")" : "";
+        String first = (giver.isEmpty() ? "Task giver" : giver + owner) + ": " + x + ", " + y + ", " + z;
+        CompoundTag death = task.hasUUID("GiverId") ? NpcDeaths.death(player.getServer(), task.getUUID("GiverId")) : null;
+        if (death != null) {
+            String cause = death.getString("Cause");
+            return first + "\n" + Character.toUpperCase(cause.charAt(0)) + cause.substring(1);
+        }
+        if (!dimension.equals(player.level().dimension().location().toString()))
+            return first + "\nIn " + dimension.substring(dimension.indexOf(':') + 1).replace('_', ' ');
+        double dx = x + 0.5 - player.getX(), dz = z + 0.5 - player.getZ();
+        int distance = (int) Math.round(Math.sqrt(dx * dx + dz * dz));
+        return first + "\n" + (distance < 8 ? "You are here" : distance + " blocks " + NpcServices.direction(dx, dz));
+    }
+
+    static java.util.UUID giverId(ServerPlayer player) {
+        CompoundTag task = player.getPersistentData().getCompound(DATA_KEY).getCompound(ACTIVE);
+        return task.hasUUID("GiverId") ? task.getUUID("GiverId") : null;
+    }
+
+    /** Who else accepts the active task, for the death notice. */
+    static String turnInHint(ServerPlayer player) {
+        CompoundTag task = player.getPersistentData().getCompound(DATA_KEY).getCompound(ACTIVE);
+        String faction = task.getString("Faction");
+        String group = faction.isEmpty() || "independent".equals(faction) || "military".equals(faction)
+                ? "" : NpcIdentity.label(faction) + " ";
+        String role = "independent".equals(faction) ? "independent survivor" : task.getString("Role");
+        return "The task can still be turned in to any other " + group + role + ".";
     }
 
     static String preview(ServerPlayer player, LivingEntity npc) {

@@ -546,6 +546,47 @@ public final class NpcGameTests {
         finish(h, player);
     }
 
+    // ---- Journal
+
+    @GameTest(template = "arena", batch = "journal_location", timeoutTicks = 20)
+    public static void acceptedTaskRecordsGiverLocation(GameTestHelper h) {
+        ServerPlayer player = player(h, 10, 10);
+        Mob survivor = npc(h, "survivor_1", 12, 10);
+        h.assertTrue(NpcTasks.location(player).isEmpty(), "no location before a task");
+        NpcTasks.interact(player, survivor, "survivor");
+        var pos = survivor.blockPosition();
+        String here = NpcTasks.location(player);
+        h.assertTrue(here.startsWith(NpcIdentity.name(survivor) + " (Haven): " + pos.getX() + ", " + pos.getY() + ", " + pos.getZ())
+                && here.endsWith("You are here"), "giver and coordinates recorded: " + here);
+        Vec3 away = h.absoluteVec(new Vec3(10.5, FLOOR, 10.5)).add(0, 0, -60);
+        player.teleportTo(away.x, away.y, away.z);
+        String far = NpcTasks.location(player);
+        h.assertTrue(far.endsWith("blocks south") && far.contains("\n6"), "distance and direction from the player: " + far);
+        NpcTasks.abandon(player);
+        h.assertTrue(NpcTasks.location(player).isEmpty(), "cleared with the task");
+        finish(h, player);
+    }
+
+    @GameTest(template = "arena", batch = "journal_giver_death", timeoutTicks = 20)
+    public static void journalReportsWhenTheTaskGiverDies(GameTestHelper h) {
+        ServerPlayer player = player(h, 10, 10);
+        Mob survivor = npc(h, "survivor_2", 12, 10);
+        Mob walker = npc(h, "walker_3", 14, 10);
+        walker.setNoAi(true);
+        NpcTasks.interact(player, survivor, "survivor");
+        h.assertTrue(survivor.getUUID().equals(NpcTasks.giverId(player)), "giver id stored");
+        survivor.hurt(h.getLevel().damageSources().mobAttack(walker), 1_000);
+        h.runAtTickTime(2, () -> {
+            h.assertTrue(!survivor.isAlive(), "giver died");
+            String journal = NpcTasks.location(player);
+            h.assertTrue(journal.endsWith("\nKilled by a walker"), "journal reports the death: " + journal);
+            h.assertTrue(NpcDeaths.death(h.getLevel().getServer(), survivor.getUUID()) != null, "death recorded for offline players");
+            h.assertTrue(NpcTasks.turnInHint(player).endsWith("any other Haven survivor."), NpcTasks.turnInHint(player));
+            NpcTasks.abandon(player);
+            finish(h, player);
+        });
+    }
+
     // ---- Helpers
 
     private static double averageMicros(String routine) {

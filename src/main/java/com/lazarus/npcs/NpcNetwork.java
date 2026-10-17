@@ -17,7 +17,7 @@ import java.util.function.Supplier;
 
 final class NpcNetwork {
     private static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
-            new ResourceLocation(LazarusNpcs.ID, "ui"), () -> "3", "3"::equals, "3"::equals);
+            new ResourceLocation(LazarusNpcs.ID, "ui"), () -> "4", "4"::equals, "4"::equals);
 
     private NpcNetwork() {}
 
@@ -51,6 +51,7 @@ final class NpcNetwork {
                 npc == null ? "" : encounter ? kind : NpcIdentity.role(npc),
                 npc == null ? "" : encounter ? "independent" : NpcIdentity.faction(npc),
                 npc == null ? NpcTasks.summary(player) : encounter ? "" : NpcTasks.preview(player, npc),
+                npc == null ? NpcTasks.location(player) : "",
                 npc == null ? "" : encounter ? HumanEncounters.demand(kind) : NpcServices.summary(player, npc),
                 contract, NpcStories.summary(player), reputation);
         CHANNEL.sendTo(view, player.connection.connection, NetworkDirection.PLAY_TO_CLIENT);
@@ -113,7 +114,7 @@ final class NpcNetwork {
     }
 
     record View(String page, UUID npc, String name, String role, String faction,
-                String task, String service, String contract, String stories, int[] reputation) {
+                String task, String taskLocation, String service, String contract, String stories, int[] reputation) {
         static void encode(View view, FriendlyByteBuf buf) {
             buf.writeUtf(view.page, 12);
             buf.writeUUID(view.npc);
@@ -121,6 +122,7 @@ final class NpcNetwork {
             buf.writeUtf(view.role, 16);
             buf.writeUtf(view.faction, 16);
             buf.writeUtf(view.task, 400);
+            buf.writeUtf(view.taskLocation, 200);
             buf.writeUtf(view.service, 160);
             buf.writeUtf(view.contract, 400);
             buf.writeUtf(view.stories, 800);
@@ -133,12 +135,13 @@ final class NpcNetwork {
             String role = buf.readUtf(16);
             String faction = buf.readUtf(16);
             String task = buf.readUtf(400);
+            String taskLocation = buf.readUtf(200);
             String service = buf.readUtf(160);
             String contract = buf.readUtf(400);
             String stories = buf.readUtf(800);
             int[] reputation = new int[NpcIdentity.FACTIONS.length];
             for (int i = 0; i < reputation.length; i++) reputation[i] = buf.readVarInt();
-            return new View(page, npc, name, role, faction, task, service, contract, stories, reputation);
+            return new View(page, npc, name, role, faction, task, taskLocation, service, contract, stories, reputation);
         }
         static void handle(View view, Supplier<NetworkEvent.Context> context) {
             context.get().enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT,
