@@ -186,6 +186,7 @@ final class HumanEncounters {
             state.putBoolean("Provoked", true);
             state.remove("PeaceUntil");
             putState(ally, player, state);
+            Stealth.reveal(ally, player, "ally hurt");
             ally.setTarget(player);
         }
     }

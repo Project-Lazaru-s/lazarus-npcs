@@ -139,6 +139,8 @@ dependencies {
     runtimeOnly fg.deobf("blank:curios:5.14.1")
     // TaCZ API for NPC firearms; the profile provides the real JAR.
     compileOnly fg.deobf("blank:tacz:1.1.8")
+    // Lazarus Stealth API (optional at runtime, only touched by StealthBridge when the mod is loaded).
+    compileOnly fg.deobf("blank:lazarusstealth:0.2.0")
     testCompileOnly fg.deobf("blank:tacz:1.1.8")
     runtimeOnly fg.deobf("blank:tacz:1.1.8")
 

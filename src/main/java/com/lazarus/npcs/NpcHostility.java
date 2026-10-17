@@ -102,6 +102,7 @@ final class NpcHostility {
             NpcContracts.Contract allyContract = NpcContracts.contract(ally);
             if (allyContract != null && allyContract.owner.equals(player.getUUID()) && ally != npc) continue;
             aggro(ally, player, now + AGGRO_TICKS);
+            Stealth.reveal(ally, player, "ally hurt");
             if (ally.getTarget() == null || !(ally.getTarget() instanceof Player)) ally.setTarget(player);
         }
     }

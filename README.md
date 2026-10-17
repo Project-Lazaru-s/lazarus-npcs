@@ -6,7 +6,7 @@
   <img alt="Minecraft 1.20.1" src="https://img.shields.io/badge/Minecraft-1.20.1-3c8527">
   <img alt="Forge 47.x" src="https://img.shields.io/badge/Forge-47.x-dd7d2b">
   <img alt="Java 17" src="https://img.shields.io/badge/Java-17-b07219">
-  <img alt="Versão 1.0.0" src="https://img.shields.io/badge/vers%C3%A3o-1.0.0-6b5b3e">
+  <img alt="Versão 1.1.0" src="https://img.shields.io/badge/vers%C3%A3o-1.1.0-6b5b3e">
 </p>
 
 # Lazarus NPCs
@@ -26,6 +26,7 @@ O mod não cria novas entidades nem altera o JAR do Apocalypse Now. Tudo é feit
 - [Encontros hostis](#encontros-hostis)
 - [Rendição](#rendição)
 - [Armas de fogo](#armas-de-fogo)
+- [Furtividade (com Lazarus Stealth)](#furtividade-com-lazarus-stealth)
 - [Comandos e configuração](#comandos-e-configuração)
 - [Instalação](#instalação)
 - [O que vem do Apocalypse Now](#o-que-vem-do-apocalypse-now)
@@ -162,6 +163,22 @@ Alguns NPCs nascem com uma arma do **TaCZ** do arsenal da sua facção. O sortei
 - A arma cai em **12%** das mortes causadas por jogadores, sempre com o **carregador vazio**.
 
 ---
+
+## Furtividade (com Lazarus Stealth)
+
+Com o **Lazarus Stealth 0.2.0** instalado, os NPCs que podem atacar você precisam primeiro **perceber** você:
+
+- saqueadores, soldados desertores e canibais;
+- militares e sobreviventes de facções inimigas ou com rancor.
+
+A percepção usa visão (40 blocos, cone de 140°), luz, postura, cobertura e audição.
+
+- O aviso dos saqueadores, a vigia, o posto dos soldados e a escolha da presa dos canibais só acontecem depois que o NPC percebe você.
+- Quem vê ou ouve você alerta os aliados próximos. Os NPCs comentam o que perceberam ("Did you hear that?", "There! Over there!").
+- Retaliação, chamado de grupo e emboscada informam o Lazarus Stealth antes de dar o alvo, por isso continuam funcionando.
+- Caçadores, NPCs amistosos e NPCs contratados não mudam.
+
+Sem o Lazarus Stealth, os NPCs se comportam exatamente como na 1.0.0.
 
 ## Comandos e configuração
 

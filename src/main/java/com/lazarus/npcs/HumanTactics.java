@@ -254,6 +254,7 @@ final class HumanTactics {
             boolean rallied = false;
             for (Mob ally : squad) {
                 if (ally == mob || ally.getTarget() != null || HumanEncounters.retreating(ally, now)) continue;
+                Stealth.reveal(ally, player, "rally");
                 ally.setTarget(player);
                 rallied |= ally.getTarget() == player;
             }
@@ -350,7 +351,8 @@ final class HumanTactics {
     private static void cannibal(Mob mob, OrderGoal order, long now) {
         CompoundTag root = HumanEncounters.data(mob);
         ServerPlayer prey = root.hasUUID("Prey") && mob.level().getPlayerByUUID(root.getUUID("Prey")) instanceof ServerPlayer known
-                && valid(mob, known, 40) ? known : null;
+                && valid(mob, known, 40) && (Stealth.aware(mob, known) || HumanEncounters.state(mob, known).getBoolean("Ambush"))
+                ? known : null;
         if (prey == null) {
             prey = choosePrey(mob);
             if (prey == null) {
@@ -371,7 +373,10 @@ final class HumanTactics {
         if (state.getBoolean("Ambush")) {
             if (now - state.getLong("WarnedAt") <= 1200 || mob.getTarget() == prey) {
                 mob.setShiftKeyDown(false);
-                if (mob.getTarget() == null && now - state.getLong("WarnedAt") >= 40) mob.setTarget(prey);
+                if (mob.getTarget() == null && now - state.getLong("WarnedAt") >= 40) {
+                    Stealth.reveal(mob, prey, "ambush");
+                    mob.setTarget(prey);
+                }
                 return;
             }
             state.remove("Ambush");
@@ -423,7 +428,7 @@ final class HumanTactics {
         ServerPlayer best = null;
         double bestScore = Double.MAX_VALUE;
         for (Player candidate : mob.level().players()) {
-            if (!(candidate instanceof ServerPlayer player) || !valid(mob, player, 32)) continue;
+            if (!(candidate instanceof ServerPlayer player) || !valid(mob, player, 32) || !Stealth.aware(mob, player)) continue;
             double score = mob.distanceTo(player) + 16 * companions(player);
             if (score < bestScore) {
                 bestScore = score;
