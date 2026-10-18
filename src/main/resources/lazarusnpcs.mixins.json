@@ -1,0 +1,9 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.lazarus.npcs.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "lazarusnpcs.refmap.json",
+  "mixins": ["WalkNodeEvaluatorMixin"],
+  "injectors": {"defaultRequire": 1}
+}

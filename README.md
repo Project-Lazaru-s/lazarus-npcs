@@ -6,7 +6,7 @@
   <img alt="Minecraft 1.20.1" src="https://img.shields.io/badge/Minecraft-1.20.1-3c8527">
   <img alt="Forge 47.x" src="https://img.shields.io/badge/Forge-47.x-dd7d2b">
   <img alt="Java 17" src="https://img.shields.io/badge/Java-17-b07219">
-  <img alt="Versão 1.4.0" src="https://img.shields.io/badge/vers%C3%A3o-1.4.0-6b5b3e">
+  <img alt="Versão 1.4.2" src="https://img.shields.io/badge/vers%C3%A3o-1.4.2-6b5b3e">
 </p>
 
 # Lazarus NPCs
@@ -14,6 +14,8 @@
 **Lazarus NPCs** é um mod para Minecraft Forge 1.20.1 criado para o modpack **Project Lazarus**. Ele dá vida às pessoas que restaram no apocalipse: os sobreviventes, militares, caçadores, saqueadores, soldados desertores e canibais do **Apocalypse Now** passam a negociar, pedir ajuda, cobrar pedágio, perseguir, se render e lutar com armas do **TaCZ**.
 
 O mod não cria novas entidades nem altera o JAR do Apocalypse Now. Tudo é feito sobre os NPCs originais, com servidor autoritativo e suporte a multiplayer.
+
+Os NPCs humanos evitam rotas através de `spike_barrier` e `barbed_wire` do Apocalypse Now e tratam os blocos vizinhos como perigosos. Isso vale para patrulha, escolta e combate; os caminhos dos infectados não são alterados.
 
 ---
 
@@ -219,7 +221,7 @@ O script [`scripts/patch_soldier_loot.py`](scripts/patch_soldier_loot.py) ajusta
 
 ### Jogadores e servidores
 
-1. Baixe [`lazarusnpcs-1.4.0.jar`](dist/lazarusnpcs-1.4.0.jar) e instale os mods exigidos acima.
+1. Baixe [`lazarusnpcs-1.4.2.jar`](dist/lazarusnpcs-1.4.2.jar) e instale os mods exigidos acima.
 2. Coloque o JAR na pasta `mods` do perfil. No CurseForge, clique com o botão direito no perfil e escolha **Open Folder**.
 3. Em multiplayer, instale a **mesma versão** no servidor e em todos os clientes. Versões com protocolo diferente recusam a conexão em vez de falhar.
 4. Remova qualquer JAR antigo `lazarusnpcs` antes de atualizar e reinicie o Minecraft.

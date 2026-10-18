@@ -14,7 +14,10 @@ import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.PathNavigationRegion;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.pathfinder.BlockPathTypes;
+import net.minecraft.world.level.pathfinder.WalkNodeEvaluator;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.gametest.GameTestHolder;
@@ -26,6 +29,35 @@ import net.minecraftforge.registries.ForgeRegistries;
 @PrefixGameTestTemplate(false)
 public final class NpcGameTests {
     private NpcGameTests() {}
+
+    @GameTest(template = "arena", batch = "npc_hazard_paths")
+    public static void humansRouteAroundSpikeBarrierAndWire(GameTestHelper h) {
+        Mob guard = npc(h, "military_01", 4, 4);
+        Mob looter = npc(h, "looter_1", 5, 4);
+        Mob walker = npc(h, "walker_1", 6, 4);
+        WalkNodeEvaluator evaluator = new WalkNodeEvaluator();
+        for (String id : new String[] {"spike_barrier", "barbed_wire"}) {
+            BlockPos obstacle = h.absolutePos(new BlockPos(id.equals("spike_barrier") ? 12 : 17, FLOOR, 12));
+            h.getLevel().setBlock(obstacle, ForgeRegistries.BLOCKS.getValue(
+                    new ResourceLocation("apocalypsenow", id)).defaultBlockState(), 3);
+            PathNavigationRegion region = new PathNavigationRegion(h.getLevel(), obstacle.offset(-3, -2, -3),
+                    obstacle.offset(3, 3, 3));
+            for (Mob human : new Mob[] {guard, looter}) {
+                evaluator.prepare(region, human);
+                h.assertTrue(evaluator.getBlockPathType(region, obstacle.getX(), obstacle.getY(),
+                        obstacle.getZ(), human) == BlockPathTypes.BLOCKED, id + " blocks human route");
+                h.assertTrue(evaluator.getBlockPathType(region, obstacle.getX() + 1, obstacle.getY(),
+                        obstacle.getZ(), human) == BlockPathTypes.DANGER_OTHER, id + " warns adjacent route");
+                evaluator.done();
+            }
+            evaluator.prepare(region, walker);
+            h.assertTrue(evaluator.getBlockPathType(region, obstacle.getX() + 1, obstacle.getY(),
+                    obstacle.getZ(), walker) != BlockPathTypes.DANGER_OTHER,
+                    id + " does not change zombie navigation");
+            evaluator.done();
+        }
+        h.succeed();
+    }
 
     // ---- Escort
 

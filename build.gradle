@@ -3,6 +3,7 @@ plugins {
     id 'idea'
     id 'maven-publish'
     id 'net.minecraftforge.gradle' version '[6.0,6.2)'
+    id 'org.spongepowered.mixin' version '0.7.38'
 }
 
 version = mod_version
@@ -135,6 +136,7 @@ dependencies {
     // If the group id is "net.minecraft" and the artifact id is one of ["client", "server", "joined"],
     // then special handling is done to allow a setup of a vanilla dependency without the use of an external repository.
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+    annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
     runtimeOnly fg.deobf("blank:apocalypsenow:3.0.5")
     runtimeOnly fg.deobf("blank:curios:5.14.1")
     // TaCZ API for NPC firearms; the profile provides the real JAR.
@@ -158,6 +160,11 @@ dependencies {
     // For more info:
     // http://www.gradle.org/docs/current/userguide/artifact_dependencies_tutorial.html
     // http://www.gradle.org/docs/current/userguide/dependency_management.html
+}
+
+mixin {
+    add sourceSets.main, 'lazarusnpcs.refmap.json'
+    config 'lazarusnpcs.mixins.json'
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.
