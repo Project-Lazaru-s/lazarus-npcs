@@ -111,6 +111,12 @@ final class HumanTactics {
 
     static int tracked() { return ORDERS.size(); }
 
+    /** Whether a tactical move (retreat, cover, stalk, post return) is in progress; scenario orders yield to it. */
+    static boolean ordering(Mob mob) {
+        OrderGoal order = ORDERS.get(mob);
+        return order != null && order.canUse();
+    }
+
     /** Hunters step in when an infected hurts a nearby player. */
     @SubscribeEvent
     public static void assist(LivingHurtEvent event) {

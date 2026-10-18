@@ -17,7 +17,9 @@ import java.util.function.Supplier;
 
 final class NpcNetwork {
     private static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
-            new ResourceLocation(LazarusNpcs.ID, "ui"), () -> "4", "4"::equals, "4"::equals);
+            new ResourceLocation(LazarusNpcs.ID, "ui"), () -> "5", "5"::equals, "5"::equals);
+    /** Longest JSON text component sent for dialogue lines and labels. */
+    static final int MAX_COMPONENT_JSON = 2_048;
 
     private NpcNetwork() {}
 
@@ -26,9 +28,28 @@ final class NpcNetwork {
                 Optional.of(NetworkDirection.PLAY_TO_SERVER));
         CHANNEL.registerMessage(1, View.class, View::encode, View::decode, View::handle,
                 Optional.of(NetworkDirection.PLAY_TO_CLIENT));
+        CHANNEL.registerMessage(2, DialogueView.class, DialogueView::encode, DialogueView::decode, DialogueView::handle,
+                Optional.of(NetworkDirection.PLAY_TO_CLIENT));
+        CHANNEL.registerMessage(3, DialogueChoice.class, DialogueChoice::encode, DialogueChoice::decode, DialogueChoice::handle,
+                Optional.of(NetworkDirection.PLAY_TO_SERVER));
     }
 
     static void send(String action, UUID npc) { CHANNEL.sendToServer(new Action(action, npc)); }
+
+    static void choose(UUID npc, long token, int index) { CHANNEL.sendToServer(new DialogueChoice(npc, token, index)); }
+
+    static void sendDialogue(ServerPlayer player, LivingEntity npc, String lineJson, java.util.List<String> labelsJson, long token) {
+        String name = NpcIdentity.role(npc) != null ? NpcIdentity.name(npc)
+                : HumanEncounters.kind(npc) != null ? HumanEncounters.label(HumanEncounters.kind(npc)) : npc.getName().getString();
+        String faction = NpcIdentity.role(npc) != null ? NpcIdentity.faction(npc) : "hostile";
+        CHANNEL.sendTo(new DialogueView(npc.getUUID(), name, faction, lineJson, labelsJson, token, false),
+                player.connection.connection, NetworkDirection.PLAY_TO_CLIENT);
+    }
+
+    static void closeDialogue(ServerPlayer player) {
+        CHANNEL.sendTo(new DialogueView(new UUID(0, 0), "", "", "", java.util.List.of(), 0, true),
+                player.connection.connection, NetworkDirection.PLAY_TO_CLIENT);
+    }
 
     static void journal(ServerPlayer player) { sendView(player, "journal", null); }
 
@@ -53,7 +74,7 @@ final class NpcNetwork {
                 npc == null ? NpcTasks.summary(player) : encounter ? "" : NpcTasks.preview(player, npc),
                 npc == null ? NpcTasks.location(player) : "",
                 npc == null ? "" : encounter ? HumanEncounters.demand(kind) : NpcServices.summary(player, npc),
-                contract, NpcStories.summary(player), reputation);
+                contract, NpcStories.summary(player), npc == null ? EncounterTasks.journal(player) : "", reputation);
         CHANNEL.sendTo(view, player.connection.connection, NetworkDirection.PLAY_TO_CLIENT);
     }
 
@@ -70,6 +91,7 @@ final class NpcNetwork {
                 if ("journal".equals(packet.kind)) { journal(player); return; }
                 if ("abandon".equals(packet.kind)) { NpcTasks.abandon(player); journal(player); return; }
                 if ("releaseall".equals(packet.kind)) { NpcContracts.releaseAll(player); journal(player); return; }
+                if ("encabandon".equals(packet.kind)) { EncounterTasks.abandon(player); journal(player); return; }
                 var entity = player.serverLevel().getEntity(packet.npc);
                 if (!(entity instanceof LivingEntity npc) || !npc.isAlive() || npc.distanceToSqr(player) > 64
                         || !player.hasLineOfSight(npc)) return;
@@ -114,7 +136,8 @@ final class NpcNetwork {
     }
 
     record View(String page, UUID npc, String name, String role, String faction,
-                String task, String taskLocation, String service, String contract, String stories, int[] reputation) {
+                String task, String taskLocation, String service, String contract, String stories, String encounter,
+                int[] reputation) {
         static void encode(View view, FriendlyByteBuf buf) {
             buf.writeUtf(view.page, 12);
             buf.writeUUID(view.npc);
@@ -126,6 +149,7 @@ final class NpcNetwork {
             buf.writeUtf(view.service, 160);
             buf.writeUtf(view.contract, 400);
             buf.writeUtf(view.stories, 800);
+            buf.writeUtf(view.encounter, 1000);
             for (int score : view.reputation) buf.writeVarInt(score);
         }
         static View decode(FriendlyByteBuf buf) {
@@ -139,13 +163,69 @@ final class NpcNetwork {
             String service = buf.readUtf(160);
             String contract = buf.readUtf(400);
             String stories = buf.readUtf(800);
+            String encounter = buf.readUtf(1000);
             int[] reputation = new int[NpcIdentity.FACTIONS.length];
             for (int i = 0; i < reputation.length; i++) reputation[i] = buf.readVarInt();
-            return new View(page, npc, name, role, faction, task, taskLocation, service, contract, stories, reputation);
+            return new View(page, npc, name, role, faction, task, taskLocation, service, contract, stories, encounter, reputation);
         }
         static void handle(View view, Supplier<NetworkEvent.Context> context) {
             context.get().enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT,
                     () -> () -> NpcClient.open(view)));
+            context.get().setPacketHandled(true);
+        }
+    }
+
+    /** Server to client: a dialogue page, or {@code close} to dismiss the dialogue screen. */
+    record DialogueView(UUID npc, String name, String faction, String lineJson, java.util.List<String> labelsJson,
+                        long token, boolean close) {
+        static void encode(DialogueView view, FriendlyByteBuf buf) {
+            buf.writeUUID(view.npc);
+            buf.writeUtf(view.name, 64);
+            buf.writeUtf(view.faction, 16);
+            buf.writeUtf(view.lineJson, MAX_COMPONENT_JSON);
+            buf.writeVarInt(view.labelsJson.size());
+            for (String label : view.labelsJson) buf.writeUtf(label, MAX_COMPONENT_JSON);
+            buf.writeLong(view.token);
+            buf.writeBoolean(view.close);
+        }
+
+        static DialogueView decode(FriendlyByteBuf buf) {
+            UUID npc = buf.readUUID();
+            String name = buf.readUtf(64);
+            String faction = buf.readUtf(16);
+            String line = buf.readUtf(MAX_COMPONENT_JSON);
+            int count = buf.readVarInt();
+            if (count < 0 || count > com.lazarus.npcs.api.dialogue.DialoguePage.MAX_OPTIONS)
+                throw new IllegalArgumentException("too many dialogue options: " + count);
+            java.util.List<String> labels = new java.util.ArrayList<>();
+            for (int i = 0; i < count; i++) labels.add(buf.readUtf(MAX_COMPONENT_JSON));
+            return new DialogueView(npc, name, faction, line, labels, buf.readLong(), buf.readBoolean());
+        }
+
+        static void handle(DialogueView view, Supplier<NetworkEvent.Context> context) {
+            context.get().enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> NpcClient.dialogue(view)));
+            context.get().setPacketHandled(true);
+        }
+    }
+
+    /** Client to server: the picked option by position (-1 for Back) and the session token. */
+    record DialogueChoice(UUID npc, long token, int index) {
+        static void encode(DialogueChoice choice, FriendlyByteBuf buf) {
+            buf.writeUUID(choice.npc);
+            buf.writeLong(choice.token);
+            buf.writeVarInt(choice.index + 1);
+        }
+
+        static DialogueChoice decode(FriendlyByteBuf buf) {
+            return new DialogueChoice(buf.readUUID(), buf.readLong(), buf.readVarInt() - 1);
+        }
+
+        static void handle(DialogueChoice choice, Supplier<NetworkEvent.Context> context) {
+            context.get().enqueueWork(() -> {
+                ServerPlayer player = context.get().getSender();
+                if (player != null && choice.index >= -1 && choice.index < com.lazarus.npcs.api.dialogue.DialoguePage.MAX_OPTIONS)
+                    NpcDialogues.choose(player, choice.npc, choice.token, choice.index);
+            });
             context.get().setPacketHandled(true);
         }
     }

@@ -185,7 +185,7 @@ public final class NpcGameTests {
         NpcContracts.hireGuard(owner, guard, 6);
         NpcContracts.Contract c = NpcContracts.contract(guard);
         h.assertTrue(c != null && c.radius == 6, "guard hired");
-        Mob outside = npc(h, "walker_1", 30, 16);
+        Mob outside = npc(h, "walker_1", 16, 30); // 14 blocks out, off the line of fire toward the inside threat
         outside.setNoAi(true);
         h.runAtTickTime(200, () -> {
             h.assertTrue(c.arrived, "guard walked to the post; distance " + guard.position().distanceTo(c.post())
@@ -196,7 +196,9 @@ public final class NpcGameTests {
             h.succeedWhen(() -> {
                 h.assertTrue(guard.getTarget() == inside || !inside.isAlive(), "threat inside the area is engaged");
                 h.assertTrue(guard.position().distanceTo(c.post()) <= c.radius + 8, "guard stays near the post");
-                h.assertTrue(outside.isAlive(), "threat outside the area left alone");
+                h.assertTrue(outside.isAlive(), "threat outside the area left alone; killed by " + outside.getLastHurtByMob()
+                        + " via " + (outside.getLastDamageSource() == null ? "?" : outside.getLastDamageSource().getMsgId())
+                        + ", guard holds " + guard.getMainHandItem() + ", outside at " + outside.position() + " removed " + outside.getRemovalReason());
                 NpcContracts.end(h.getLevel().getServer(), c, null);
                 remove(h, owner);
             });
@@ -275,7 +277,7 @@ public final class NpcGameTests {
 
     // ---- Surrender
 
-    @GameTest(template = "arena", batch = "surrender_loot", timeoutTicks = 60)
+    @GameTest(template = "arena", batch = "surrender_loot", timeoutTicks = 80)
     public static void surrenderedNpcStopsFightingAndDropsNothing(GameTestHelper h) {
         ServerPlayer player = player(h, 10, 10);
         Mob looter = npc(h, "looter_1", 12, 12);
@@ -285,9 +287,12 @@ public final class NpcGameTests {
         h.assertTrue(looter.getTarget() == null, "surrendered NPC cannot take a target");
         h.assertTrue(looter.getMainHandItem().isEmpty(), "weapon thrown down");
         looter.hurt(h.getLevel().damageSources().playerAttack(player), 1_000);
-        h.runAtTickTime(5, () -> {
-            var items = h.getLevel().getEntitiesOfClass(ItemEntity.class, new AABB(looter.blockPosition()).inflate(4));
-            h.assertTrue(items.isEmpty(), "no loot from a killed prisoner: " + items.stream().map(i -> i.getItem().toString()).toList());
+        h.runAtTickTime(30, () -> { // late enough to catch Apocalypse Now's delayed flesh spawn
+            // Only items that appeared after the kill; other tests may leave older drops nearby.
+            var items = h.getLevel().getEntitiesOfClass(ItemEntity.class, new AABB(looter.blockPosition()).inflate(4),
+                    item -> item.getAge() <= 32);
+            h.assertTrue(items.isEmpty(), "no loot from a killed prisoner: " + items.stream().map(i -> ForgeRegistries.ITEMS.getKey(i.getItem().getItem())
+                    + " age " + i.getAge() + " at " + i.position().distanceTo(looter.position())).toList());
             h.assertTrue(NpcReputation.get(player, "wardens") == wardens - 3, "Wardens trust lost");
             finish(h, player);
         });
@@ -636,7 +641,7 @@ public final class NpcGameTests {
      * Like GameTestHelper.makeMockServerPlayerInLevel, but with a live embedded Netty channel: Forge 47's
      * login hooks dereference the channel, which the vanilla mock leaves null.
      */
-    private static ServerPlayer player(GameTestHelper h, int x, int z) {
+    static ServerPlayer player(GameTestHelper h, int x, int z) {
         return player(h, new com.mojang.authlib.GameProfile(java.util.UUID.randomUUID(), "tester" + ++players), x, z);
     }
 
@@ -657,12 +662,12 @@ public final class NpcGameTests {
     }
 
     @SuppressWarnings("unchecked")
-    private static Mob npc(GameTestHelper h, String path, int x, int z) {
+    static Mob npc(GameTestHelper h, String path, int x, int z) {
         EntityType<Mob> type = (EntityType<Mob>) ForgeRegistries.ENTITY_TYPES.getValue(new ResourceLocation("apocalypsenow", path));
         return h.spawn(type, x, FLOOR, z);
     }
 
-    private static void hireEscort(ServerPlayer owner, Mob soldier) {
+    static void hireEscort(ServerPlayer owner, Mob soldier) {
         give(owner, NpcContracts.ESCORT_COST);
         NpcContracts.hireEscort(owner, soldier);
         if (NpcContracts.contract(soldier) == null)

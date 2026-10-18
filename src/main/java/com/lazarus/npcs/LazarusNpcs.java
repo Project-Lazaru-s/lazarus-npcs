@@ -29,6 +29,8 @@ public final class LazarusNpcs {
     private static final Map<UUID, NpcMerchant> MERCHANTS = new HashMap<>();
 
     public LazarusNpcs() {
+        com.lazarus.npcs.api.NpcApi.install(new ApiBackend());
+        EncounterTasks.init();
         TradeCatalog.load();
         NpcNetwork.register();
         NpcSounds.SOUNDS.register(net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext.get().getModEventBus());
@@ -50,6 +52,13 @@ public final class LazarusNpcs {
             event.setCanceled(true);
             if (HumanSurrender.canResolve(npc, player)) NpcNetwork.openSurrender(player, npc);
             else player.displayClientMessage(Component.literal("They surrendered to someone else."), true);
+            return;
+        }
+        // Scenario and task dialogues from the API come first; without one, everything below behaves as before.
+        if (event.getEntity() instanceof ServerPlayer player
+                && NpcDialogues.open(player, npc, com.lazarus.npcs.api.dialogue.DialogueTrigger.INTERACT, null)) {
+            event.setCancellationResult(InteractionResult.SUCCESS);
+            event.setCanceled(true);
             return;
         }
         if (event.getEntity() instanceof ServerPlayer player && HumanEncounters.canNegotiate(npc, player)) {

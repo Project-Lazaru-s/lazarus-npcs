@@ -44,6 +44,15 @@ public final class NpcClient {
         event.getGuiGraphics().renderItem(Items.WRITABLE_BOOK.getDefaultInstance(), left + 75, top + 28);
     }
 
+    static void dialogue(NpcNetwork.DialogueView view) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (view.close()) {
+            if (minecraft.screen instanceof DialogueScreen) minecraft.setScreen(null);
+            return;
+        }
+        minecraft.setScreen(new DialogueScreen(view));
+    }
+
     static void open(NpcNetwork.View view) {
         if ("journal".equals(view.page())) Minecraft.getInstance().setScreen(new JournalScreen(view));
         else if ("encounter".equals(view.page())) Minecraft.getInstance().setScreen(new EncounterScreen(view));
@@ -103,6 +112,61 @@ public final class NpcClient {
         }
     }
 
+    /** A line from the NPC and up to four answers, all validated again by the server when picked. */
+    private static final class DialogueScreen extends PaperScreen {
+        private final NpcNetwork.DialogueView view;
+        private final Component line;
+
+        DialogueScreen(NpcNetwork.DialogueView view) {
+            super("Conversation");
+            this.view = view;
+            this.line = parse(view.lineJson());
+        }
+
+        private static Component parse(String json) {
+            try {
+                Component component = Component.Serializer.fromJson(json);
+                return component == null ? Component.empty() : component;
+            } catch (RuntimeException malformed) {
+                return Component.literal(json);
+            }
+        }
+
+        @Override protected void init() {
+            addRenderableWidget(Button.builder(Component.literal("Back"), button -> NpcNetwork.choose(view.npc(), view.token(), -1))
+                    .bounds(left() + 202, top() + 8, 42, 16).build());
+            for (int i = 0; i < view.labelsJson().size(); i++) {
+                final int index = i;
+                addRenderableWidget(Button.builder(parse(view.labelsJson().get(i)), button -> {
+                    NpcNetwork.choose(view.npc(), view.token(), index);
+                    button.active = false;
+                }).bounds(left() + 28, top() + 104 + i * 22, 200, 20).build());
+            }
+        }
+
+        @Override public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+            super.render(graphics, mouseX, mouseY, partialTick);
+            label(graphics, "LAZARUS / CONVERSATION", 17, 13, 0xFFE4D9C8);
+            label(graphics, view.name(), 20, 36, factionColor(view.faction()));
+            int row = 0;
+            for (var text : font.split(line, 214)) {
+                if (row >= 4) break;
+                graphics.drawString(font, text, left() + 20, top() + 52 + row++ * 12, 0xFFEEE7DB, false);
+            }
+        }
+
+        private static int factionColor(String faction) {
+            return 0xFF000000 | switch (faction) {
+                case "haven" -> 0x8FCB91;
+                case "rovers" -> 0xE0AE67;
+                case "wardens" -> 0x84B5D6;
+                case "military" -> 0xB5C48B;
+                case "hostile" -> 0xD48968;
+                default -> 0xD8C6AA;
+            };
+        }
+    }
+
     private static abstract class PaperScreen extends Screen {
         PaperScreen(String title) { super(Component.literal(title)); }
         int left() { return (width - 256) / 2; }
@@ -144,9 +208,10 @@ public final class NpcClient {
             addRenderableWidget(Button.builder(Component.literal(switch (journalTab) {
                 case 1 -> "Contracts";
                 case 2 -> "Stories";
+                case 3 -> "Encounters";
                 default -> "Task";
             }), button -> {
-                journalTab = (journalTab + 1) % 3;
+                journalTab = (journalTab + 1) % 4;
                 rebuildWidgets();
             }).bounds(left() + 138, top() + 8, 60, 16).build());
             if (journalTab == 1) {
@@ -154,6 +219,14 @@ public final class NpcClient {
                     addRenderableWidget(Button.builder(Component.literal("Release all contracts"), button ->
                             NpcNetwork.send("releaseall", new UUID(0, 0)))
                             .bounds(left() + 60, top() + 168, 136, 18).build());
+            } else if (journalTab == 3) {
+                String first = view.encounter().lines().findFirst().orElse("");
+                boolean finished = first.endsWith("(completed)") || first.endsWith("(expired)")
+                        || first.endsWith("(abandoned)") || first.contains("(failed");
+                if (!view.encounter().isEmpty() && !finished)
+                    addRenderableWidget(Button.builder(Component.literal("Abandon encounter task"), button ->
+                            NpcNetwork.send("encabandon", new UUID(0, 0)))
+                            .bounds(left() + 60, top() + 172, 136, 16).build());
             } else if (journalTab == 0 && !"No active task".equals(view.task()))
                 addRenderableWidget(Button.builder(Component.literal("Abandon"), button ->
                         NpcNetwork.send("abandon", new UUID(0, 0)))
@@ -168,6 +241,21 @@ public final class NpcClient {
         @Override public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
             super.render(graphics, mouseX, mouseY, partialTick);
             label(graphics, "LAZARUS / JOURNAL", 17, 13, 0xFFE4D9C8);
+            if (journalTab == 3) {
+                label(graphics, "ENCOUNTER TASK", 20, 39, 0xFFD4A185);
+                if (view.encounter().isEmpty()) {
+                    wrapped(graphics, "No encounter task. Survivors in trouble may ask for your help.", 20, 55, 215, 0xFFB9A995, 3);
+                    return;
+                }
+                int y = 55;
+                String[] lines = view.encounter().lines().toArray(String[]::new);
+                for (int i = 0; i < lines.length && y < 166; i++) {
+                    int rows = Math.min(i == 1 ? 3 : 2, font.split(Component.literal(lines[i]), 215).size());
+                    wrapped(graphics, lines[i], 20, y, 215, i == 0 ? 0xFFF4ECE0 : i == lines.length - 1 ? 0xFFD4A185 : 0xFFE3D9C9, rows);
+                    y += 12 * rows + 3;
+                }
+                return;
+            }
             if (journalTab == 2) {
                 label(graphics, "DISCOVERED STORIES", 20, 39, 0xFFD4A185);
                 int y = 56;

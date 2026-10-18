@@ -6,7 +6,7 @@
   <img alt="Minecraft 1.20.1" src="https://img.shields.io/badge/Minecraft-1.20.1-3c8527">
   <img alt="Forge 47.x" src="https://img.shields.io/badge/Forge-47.x-dd7d2b">
   <img alt="Java 17" src="https://img.shields.io/badge/Java-17-b07219">
-  <img alt="Versão 1.4.2" src="https://img.shields.io/badge/vers%C3%A3o-1.4.2-6b5b3e">
+  <img alt="Versão 1.6.0" src="https://img.shields.io/badge/vers%C3%A3o-1.6.0-6b5b3e">
 </p>
 
 # Lazarus NPCs
@@ -29,6 +29,7 @@ Os NPCs humanos evitam rotas através de `spike_barrier` e `barbed_wire` do Apoc
 - [Rendição](#rendição)
 - [Armas de fogo](#armas-de-fogo)
 - [Furtividade (com Lazarus Stealth)](#furtividade-com-lazarus-stealth)
+- [API para outros mods](#api-para-outros-mods)
 - [Comandos e configuração](#comandos-e-configuração)
 - [Instalação](#instalação)
 - [O que vem do Apocalypse Now](#o-que-vem-do-apocalypse-now)
@@ -188,6 +189,22 @@ A percepção usa visão (40 blocos, cone de 140°), luz, postura, cobertura e a
 
 Sem o Lazarus Stealth, os NPCs se comportam exatamente como na 1.0.0.
 
+## API para outros mods
+
+A partir da 1.5.0, o pacote público `com.lazarus.npcs.api` permite que outros mods do Project Lazarus criem encontros com os NPCs existentes. O **Lazarus Events 0.6.0** usa a API nos encontros **Rescue** (pedido de socorro), **Last Defense** (última defesa), **False Radio** (falso sinal de rádio) e **Military** (base militar).
+
+| Recurso | O que o mod integrador pode fazer |
+|---|---|
+| Identidade e reputação | Consultar nome, papel e facção; ajustar reputação por um motivo identificado (até 10 pontos, pago uma vez por encontro); conceder passagem por um grupo de saqueadores ou soldados, como depois do pedágio (desde 1.6.0). |
+| Ordens de cenário | Mandar guardar uma área, defender um aliado, seguir um jogador, esperar ou recuar, com prazo. A ordem sobrevive a chunk descarregado e reinício, cede ao combate, à rendição e a contratos de jogadores, e nunca toma um NPC contratado. |
+| Diálogos | Mostrar uma fala com 1 a 4 escolhas na tela do NPC. O servidor revalida cada escolha, e ela vale uma única vez. |
+| Tarefas de encontro | Entregar itens, chegar a um local, proteger ou escoltar o NPC, eliminar alvos marcados ou etapas em sequência, com prazo, recompensa paga uma vez e política de morte. Aparecem na nova aba **Encounters** do diário e convivem com a tarefa comum. |
+| Eventos | Ser avisado quando uma ordem começa ou termina, um ator é ferido ou morre, uma escolha é feita, uma tarefa muda de estado ou a reputação muda. |
+
+O contrato completo, com limites, precedência, estados, eventos e exemplos, está em [`docs/API.md`](docs/API.md). Sem um mod integrador, o Lazarus NPCs se comporta exatamente como antes.
+
+---
+
 ## Comandos e configuração
 
 | Comando | Quem | Efeito |
@@ -221,7 +238,7 @@ O script [`scripts/patch_soldier_loot.py`](scripts/patch_soldier_loot.py) ajusta
 
 ### Jogadores e servidores
 
-1. Baixe [`lazarusnpcs-1.4.2.jar`](dist/lazarusnpcs-1.4.2.jar) e instale os mods exigidos acima.
+1. Baixe [`lazarusnpcs-1.6.0.jar`](dist/lazarusnpcs-1.6.0.jar) e instale os mods exigidos acima. O Lazarus Events 0.5.0 ou superior exige esta versão.
 2. Coloque o JAR na pasta `mods` do perfil. No CurseForge, clique com o botão direito no perfil e escolha **Open Folder**.
 3. Em multiplayer, instale a **mesma versão** no servidor e em todos os clientes. Versões com protocolo diferente recusam a conexão em vez de falhar.
 4. Remova qualquer JAR antigo `lazarusnpcs` antes de atualizar e reinicie o Minecraft.
@@ -237,6 +254,10 @@ Os JARs dos mods usados na compilação e nos testes não são redistribuídos. 
 | `apocalypsenow-3.0.5.jar` | Apocalypse Now 3.0.5 |
 | `curios-5.14.1.jar` | Curios 5.14.1 para 1.20.1 |
 | `tacz-1.1.8.jar` | TaCZ 1.1.8 para 1.20.1 |
+| `lazarusstealth-0.2.0.jar` | Lazarus Stealth 0.2.0 (compilação da integração opcional) |
+| `lazarusevents-0.6.0.jar` | Lazarus Events 0.6.0 (só para os GameTests de integração) |
+| `dyairdrop-1.0.0.jar` | Dyairdrop 1.0.0, exigido pelo Lazarus Events |
+| `geckolib-4.8.4.jar` | GeckoLib 4.8.4, usado pelo Dyairdrop |
 
 Com JDK 17 instalado, execute na raiz do projeto:
 
@@ -250,7 +271,7 @@ O JAR compilado fica em `build/libs/`. O `build` também roda as verificações 
 gradlew runGameTestServer
 ```
 
-Esse comando sobe um servidor 1.20.1 sem interface, com os mods de `libs/`, e roda os **29 GameTests** dentro do mundo: escolta (seguir, defender, prazo, morte do NPC e do dono, dimensão, NPC preso, dono offline e reconexão), guarda (área, posto, posse com dois jogadores, limites, chunk descarregado, reembolso e gravação), rendição, revide e hostilidade, fogo amigo, passagem paga com dois jogadores, armas de fogo, dados de mundos antigos e uma medição de custo com 24 humanos hostis e 2 guardas.
+Esse comando sobe um servidor 1.20.1 sem interface, com os mods de `libs/`, e roda os **57 GameTests** dentro do mundo: escolta (seguir, defender, prazo, morte do NPC e do dono, dimensão, NPC preso, dono offline e reconexão), guarda (área, posto, posse com dois jogadores, limites, chunk descarregado, reembolso e gravação), rendição, revide e hostilidade, fogo amigo, passagem paga com dois jogadores, armas de fogo, dados de mundos antigos, uma medição de custo com 24 humanos hostis e 2 guardas; a API (identidade, reputação com limite e pagamento único, ordens com prazo, precedência, prioridade, recarga e mod dono ausente, diálogo com token forjado, escolha repetida e jogador distante, tarefas com entrega, dois jogadores, morte do emissor, sequência e provedor ausente); e os encontros do Lazarus Events de ponta a ponta: **Rescue** (sucesso com recompensa, morte do sobrevivente e cancelamento), **Last Defense** (posição mantida com recompensa proporcional e barricada perdida) e **False Radio** (pagamento com e sem comida, blefe único, luta pela carga e o saqueador que vem fazer a exigência), **Military** (guarda da base, recepção por reputação e tarefa do perímetro com relatório e pagamento) e o tamanho das ondas, além da passagem concedida pela API.
 
 ---
 

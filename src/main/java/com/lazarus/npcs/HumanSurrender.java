@@ -163,34 +163,38 @@ final class HumanSurrender {
     }
 
     /**
-     * Apocalypse Now spawns human_flesh straight into the world when a human dies, outside the drop event,
-     * so items appearing at a prisoner's death spot on the same tick are refused as well.
+     * Apocalypse Now spawns human_flesh straight into the world when a human dies, outside the drop event and
+     * sometimes a few ticks later. Apocalypse Now items appearing near a prisoner's death within two seconds are
+     * refused as well.
      */
     @SubscribeEvent
     public static void itemJoin(net.minecraftforge.event.entity.EntityJoinLevelEvent event) {
-        if (lastDeathTime < 0 || !(event.getEntity() instanceof net.minecraft.world.entity.item.ItemEntity item)
-                || event.getLevel().isClientSide() || event.getLevel() != lastDeathLevel) return;
-        if (event.getLevel().getGameTime() - lastDeathTime <= 1 && item.position().distanceToSqr(lastDeathPos) < 9)
-            event.setCanceled(true);
+        if (PRISONER_DEATHS.isEmpty() || !(event.getEntity() instanceof net.minecraft.world.entity.item.ItemEntity item)
+                || event.getLevel().isClientSide()) return;
+        var id = ForgeRegistries.ITEMS.getKey(item.getItem().getItem());
+        if (id == null || !"apocalypsenow".equals(id.getNamespace())) return;
+        long now = event.getLevel().getGameTime();
+        PRISONER_DEATHS.removeIf(death -> now - death.time() > 40 || now < death.time());
+        for (PrisonerDeath death : PRISONER_DEATHS)
+            if (death.level() == event.getLevel() && item.position().distanceToSqr(death.pos()) < 16) {
+                event.setCanceled(true);
+                return;
+            }
     }
 
-    private static long lastDeathTime = -1;
-    private static net.minecraft.world.level.Level lastDeathLevel;
-    private static net.minecraft.world.phys.Vec3 lastDeathPos;
+    private record PrisonerDeath(net.minecraft.world.level.Level level, net.minecraft.world.phys.Vec3 pos, long time) {}
+
+    private static final java.util.List<PrisonerDeath> PRISONER_DEATHS = new java.util.ArrayList<>();
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void markDeath(LivingDeathEvent event) {
         if (event.getEntity().level().isClientSide() || !surrendered(event.getEntity())) return;
-        lastDeathTime = event.getEntity().level().getGameTime();
-        lastDeathLevel = event.getEntity().level();
-        lastDeathPos = event.getEntity().position();
+        PRISONER_DEATHS.add(new PrisonerDeath(event.getEntity().level(), event.getEntity().position(),
+                event.getEntity().level().getGameTime()));
     }
 
     @SubscribeEvent
-    public static void stopped(net.minecraftforge.event.server.ServerStoppedEvent event) {
-        lastDeathTime = -1;
-        lastDeathLevel = null;
-    }
+    public static void stopped(net.minecraftforge.event.server.ServerStoppedEvent event) { PRISONER_DEATHS.clear(); }
 
     @SubscribeEvent
     public static void death(LivingDeathEvent event) {

@@ -94,17 +94,23 @@ final class HumanEncounters {
         }
         take(player, "apocalypsenow:canned_food", 2);
         if ("soldier".equals(kind)) take(player, "minecraft:iron_ingot", 2);
-        long until = player.serverLevel().getGameTime() + 6_000;
+        grantPassage(player, npc, kind, 6_000);
+        player.inventoryMenu.broadcastChanges();
+        player.sendSystemMessage(Component.literal("The " + label(kind).toLowerCase()
+                + " take the supplies and let you pass for five minutes."));
+    }
+
+    /** Peace for this player with every member of the NPC's group within 16 blocks, as after paying. */
+    static void grantPassage(ServerPlayer player, LivingEntity npc, String kind, long ticks) {
+        long until = player.serverLevel().getGameTime() + ticks;
         for (Mob ally : group(npc, kind, 16)) {
             CompoundTag state = state(ally, player);
             state.putLong("PeaceUntil", until);
             state.putBoolean("Provoked", false);
+            if (!state.contains("WarnedAt")) state.putLong("WarnedAt", player.serverLevel().getGameTime());
             putState(ally, player, state);
             if (ally.getTarget() == player) ally.setTarget(null);
         }
-        player.inventoryMenu.broadcastChanges();
-        player.sendSystemMessage(Component.literal("The " + label(kind).toLowerCase()
-                + " take the supplies and let you pass for five minutes."));
     }
 
     /** Warns the whole group at once, so every member shares the same negotiation window. */

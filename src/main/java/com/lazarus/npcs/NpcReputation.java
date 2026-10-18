@@ -51,7 +51,10 @@ final class NpcReputation {
         }
     }
 
-    static int adjust(ServerPlayer player, String faction, int amount) {
+    static int adjust(ServerPlayer player, String faction, int amount) { return adjust(player, faction, amount, null); }
+
+    /** {@code reason} identifies API callers in the ReputationChanged event; null for Lazarus NPCs' own rules. */
+    static int adjust(ServerPlayer player, String faction, int amount, net.minecraft.resources.ResourceLocation reason) {
         if ("independent".equals(faction)) return 0;
         int current = get(player, faction);
         int updated = Math.max(-100, Math.min(100, current + amount));
@@ -59,6 +62,8 @@ final class NpcReputation {
         data.putInt(faction, updated);
         player.getPersistentData().put(DATA_KEY, data);
         NpcHostility.standingChanged(player, faction, current, updated);
+        if (updated != current)
+            ApiBackend.post(new com.lazarus.npcs.api.event.NpcApiEvents.ReputationChanged(player, faction, current, updated, reason));
         return updated;
     }
 
