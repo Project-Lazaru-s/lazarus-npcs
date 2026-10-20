@@ -810,6 +810,74 @@ public final class EventsScenarioGameTests {
         h.succeed();
     }
 
+    // ---- Military collapse (Haven/Military V1, phase 1)
+
+    @GameTest(template = "arena", batch = "events_military_collapse", timeoutTicks = 20)
+    public static void checkpointsFadeWithWorldAge(GameTestHelper h) {
+        Class<?>[] types = {int.class, int.class, int.class, int.class};
+        double[] early = (double[]) call("MilitaryCollapse", "weights", types, 5, 10, 21, 36);
+        double[] active = (double[]) call("MilitaryCollapse", "weights", types, 15, 10, 21, 36);
+        double[] decline = (double[]) call("MilitaryCollapse", "weights", types, 25, 10, 21, 36);
+        double[] collapse = (double[]) call("MilitaryCollapse", "weights", types, 40, 10, 21, 36);
+        h.assertTrue(early[0] == 0 && early[1] == 0, "nothing military before day 10");
+        h.assertTrue(active[0] == 1 && active[1] == 0, "only active checkpoints until day 21");
+        h.assertTrue(decline[0] == 0.5 && decline[1] > 0, "half the active ones, abandoned appear");
+        h.assertTrue(collapse[0] < decline[0] && collapse[1] > decline[1], "abandoned dominate later");
+        h.succeed();
+    }
+
+    @GameTest(template = "arena", batch = "events_military_abandoned", timeoutTicks = 40)
+    public static void abandonedCheckpointHasLogAndNoSoldiers(GameTestHelper h) {
+        UUID encounter = UUID.randomUUID();
+        Object placed = call("LazarusEvents", "place", new Class<?>[]{ServerLevel.class, BlockPos.class, String.class, int.class,
+                boolean.class, UUID.class}, h.getLevel(), h.absolutePos(new BlockPos(6, 2, 6)), "abandoned", 0, true, encounter);
+        h.assertTrue((boolean) placed, "abandoned checkpoint placed");
+        AABB area = new AABB(h.absolutePos(new BlockPos(6, 2, 6))).inflate(28);
+        List<Mob> actors = h.getLevel().getEntitiesOfClass(Mob.class, area, mob -> mob.getTags().contains("lazarusevents:" + encounter));
+        h.assertTrue(actors.stream().noneMatch(mob -> NpcApi.identity(mob).isPresent()), "no soldiers left");
+        h.assertTrue(actors.size() >= 2 && actors.stream().allMatch(mob -> mob instanceof net.minecraft.world.entity.monster.Zombie
+                && !mob.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.HEAD).isEmpty()), "infected soldiers in uniform: " + actors.size());
+        boolean log = false;
+        for (BlockPos pos : BlockPos.betweenClosed(BlockPos.containing(area.minX, area.minY, area.minZ),
+                BlockPos.containing(area.maxX, area.maxY, area.maxZ)))
+            if (h.getLevel().getBlockEntity(pos) instanceof net.minecraft.world.level.block.entity.LecternBlockEntity lectern
+                    && lectern.getBook().is(net.minecraft.world.item.Items.WRITTEN_BOOK)) log = true;
+        h.assertTrue(log, "a duty log lies on a lectern");
+        h.killAllEntities();
+        h.succeed();
+    }
+
+    @GameTest(template = "arena", batch = "events_military_supply", timeoutTicks = 60)
+    public static void supplyDropNeedsStandingFoodAndCooldown(GameTestHelper h) {
+        UUID encounter = UUID.randomUUID();
+        List<Mob> staff = base(h, encounter);
+        Mob soldier = staff.stream().filter(m -> "military".equals(NpcIdentity.role(m))).findFirst().orElseThrow();
+        BlockPos at = soldier.blockPosition().subtract(h.absolutePos(BlockPos.ZERO));
+        ServerPlayer player = NpcGameTests.player(h, at.getX() + 2, at.getZ());
+        Item flare = item("dyairdrop:flaregun0"), food = item("apocalypsenow:canned_food");
+        Class<?>[] types = {ServerPlayer.class, UUID.class};
+        call("MilitaryBaseEncounter", "requestDrop", types, player, encounter);
+        h.assertTrue(player.getInventory().countItem(flare) == 0, "no drop for strangers");
+        h.assertTrue(NpcDialogues.open(player, soldier, DialogueTrigger.INTERACT, null)
+                && !NpcDialogues.session(player).options().contains("supply"), "no supply option below Friendly");
+        NpcReputation.adjust(player, "military", 15);
+        h.assertTrue(NpcDialogues.open(player, soldier, DialogueTrigger.INTERACT, null)
+                && NpcDialogues.session(player).options().contains("supply"), "supply option at Friendly");
+        call("MilitaryBaseEncounter", "requestDrop", types, player, encounter);
+        h.assertTrue(player.getInventory().countItem(flare) == 0, "no drop without food");
+        player.getInventory().add(new ItemStack(food, 4));
+        call("MilitaryBaseEncounter", "requestDrop", types, player, encounter);
+        h.assertTrue(player.getInventory().countItem(flare) == 1, "flare gun handed over");
+        h.assertTrue(player.getInventory().countItem(food) == 1, "three canned food taken");
+        h.assertTrue(NpcReputation.get(player, "military") == 11, "-4 Military: " + NpcReputation.get(player, "military"));
+        player.getInventory().add(new ItemStack(food, 3));
+        call("MilitaryBaseEncounter", "requestDrop", types, player, encounter);
+        h.assertTrue(player.getInventory().countItem(flare) == 1 && player.getInventory().countItem(food) == 4,
+                "cooldown: nothing traded twice");
+        done(h, player);
+        h.succeed();
+    }
+
     @GameTest(template = "arena", batch = "events_passage_api", timeoutTicks = 20)
     public static void passageOnlyForTollTakers(GameTestHelper h) {
         ServerPlayer player = NpcGameTests.player(h, 10, 10);
