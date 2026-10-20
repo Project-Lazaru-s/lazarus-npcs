@@ -13,13 +13,16 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Rovers and Wardens with an assigned profession wear their own skin. The server sends "faction_profession" when a
- * player starts tracking such an NPC or the profession changes; the client keeps it by entity id for the renderer.
+ * Rovers, Wardens and Haven residents with an assigned profession wear their own skin; every deserter (rogue
+ * soldier), Hollow cultist (cannibal) and military soldier wears one of their group's skins, and military medics
+ * wear the medic skin. The server sends the key when a player starts tracking such an NPC or the
+ * profession changes; the client keeps it by entity id for the renderer.
  */
 @Mod.EventBusSubscriber(modid = LazarusNpcs.ID)
 public final class ProfessionSkins {
     private static final Map<Integer, ResourceLocation> CLIENT = new ConcurrentHashMap<>();
     private static final Map<String, ResourceLocation> TEXTURES = new ConcurrentHashMap<>();
+    static final int DESERTER_SKINS = 3, MILITARY_SKINS = 3, HOLLOW_SKINS = 3;
 
     private ProfessionSkins() {}
 
@@ -34,8 +37,15 @@ public final class ProfessionSkins {
                 k -> new ResourceLocation(LazarusNpcs.ID, "textures/entity/profession/" + k + ".png")));
     }
 
-    /** Server: "rovers_guard" style key, empty when the NPC has no explicitly assigned profession. */
+    /** Server: "rovers_guard" style key, "deserter_N" / "military_N" / "military_medic", empty for everyone else. */
     static String key(LivingEntity npc) {
+        // The same soldier always wears the same skin of their group.
+        int pick = Math.floorMod(npc.getUUID().hashCode(), 3);
+        if ("soldier".equals(HumanEncounters.kind(npc))) return "deserter_" + (1 + pick % DESERTER_SKINS);
+        if ("cannibal".equals(HumanEncounters.kind(npc))) return "hollow_" + (1 + pick % HOLLOW_SKINS);
+        String role = NpcIdentity.role(npc);
+        if ("military".equals(role)) return "military_" + (1 + pick % MILITARY_SKINS);
+        if ("medic".equals(role)) return "military_medic";
         String profession = NpcProfessions.assigned(npc);
         return profession.isEmpty() ? "" : NpcIdentity.faction(npc) + "_" + profession;
     }

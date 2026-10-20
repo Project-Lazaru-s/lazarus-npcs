@@ -22,7 +22,7 @@ dependencies { compileOnly fg.deobf("blank:lazarusnpcs:1.13.0") }
     side="BOTH"
 ```
 
-`NpcApi.API_VERSION` vale `6`. A versão 6 acrescenta `HostileGroups` (nomes das gangues por território de 512 blocos, a partir da seed, e o nome do culto). A versão 5 acrescentou a doutrina `NpcFactions.Definition.doctrine()`, `NpcApi.setRoutine`, `ScenarioOrder.TRAVEL` e `NpcApi.setTravelRoute`. O construtor anterior de seis argumentos de `NpcFactions.Definition` continua disponível. A versão 4 acrescentou identidade explícita de facção e o catálogo `NpcFactions`; a versão 3 acrescentou profissão persistente e rota de patrulha. As chamadas anteriores preservam seu contrato.
+`NpcApi.API_VERSION` vale `7`. A versão 7 acrescenta os eventos de prisioneiro: `NpcApiEvents.PrisonerChoices` (ouvintes oferecem as escolhas extras `interrogate` e `refuge` na tela de rendição), `PrisonerInterrogated` (uma vez por prisioneiro) e `PrisonerSentAway` (o NPC é removido logo depois). A versão 6 acrescentou `HostileGroups` (nomes das gangues por território de 512 blocos, a partir da seed, e o nome do culto). A versão 5 acrescentou a doutrina `NpcFactions.Definition.doctrine()`, `NpcApi.setRoutine`, `ScenarioOrder.TRAVEL` e `NpcApi.setTravelRoute`. O construtor anterior de seis argumentos de `NpcFactions.Definition` continua disponível. A versão 4 acrescentou identidade explícita de facção e o catálogo `NpcFactions`; a versão 3 acrescentou profissão persistente e rota de patrulha. As chamadas anteriores preservam seu contrato.
 
 ```java
 NpcApi.assignProfession(resident, id("leader"), baseId);

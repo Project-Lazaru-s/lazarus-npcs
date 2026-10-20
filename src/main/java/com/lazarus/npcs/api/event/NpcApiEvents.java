@@ -182,4 +182,46 @@ public final class NpcApiEvents {
         public int getAfter() { return after; }
         public @Nullable ResourceLocation getReason() { return reason; }
     }
+
+    /** Base for prisoner events (API v7): a surrendered looter or rogue soldier and the player who holds them. */
+    public abstract static class Prisoner extends Event {
+        private final ServerPlayer player;
+        private final LivingEntity npc;
+        private final String kind;
+
+        Prisoner(ServerPlayer player, LivingEntity npc, String kind) {
+            this.player = player;
+            this.npc = npc;
+            this.kind = kind;
+        }
+
+        public ServerPlayer getPlayer() { return player; }
+        public LivingEntity getNpc() { return npc; }
+        /** "looter" or "soldier". */
+        public String getKind() { return kind; }
+    }
+
+    /**
+     * Asked when the surrender screen opens: listeners add the extra choices they can resolve,
+     * {@link #INTERROGATE} and {@link #REFUGE}. The only exception to "observational": the set is mutable.
+     */
+    public static final class PrisonerChoices extends Prisoner {
+        public static final String INTERROGATE = "interrogate", REFUGE = "refuge";
+        private final java.util.Set<String> choices = new java.util.LinkedHashSet<>();
+
+        public PrisonerChoices(ServerPlayer player, LivingEntity npc, String kind) { super(player, npc, kind); }
+
+        public void offer(String choice) { choices.add(choice); }
+        public java.util.Set<String> getChoices() { return java.util.Collections.unmodifiableSet(choices); }
+    }
+
+    /** The player interrogated the prisoner (once per prisoner); listeners reveal what the prisoner knows. */
+    public static final class PrisonerInterrogated extends Prisoner {
+        public PrisonerInterrogated(ServerPlayer player, LivingEntity npc, String kind) { super(player, npc, kind); }
+    }
+
+    /** The player sent the prisoner away to live elsewhere; the NPC is removed right after this event. */
+    public static final class PrisonerSentAway extends Prisoner {
+        public PrisonerSentAway(ServerPlayer player, LivingEntity npc, String kind) { super(player, npc, kind); }
+    }
 }

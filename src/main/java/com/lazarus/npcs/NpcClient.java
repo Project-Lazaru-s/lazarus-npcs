@@ -99,6 +99,16 @@ public final class NpcClient {
                 NpcNetwork.send("letgo", view.npc());
                 onClose();
             }).bounds(left() + 132, top() + 140, 90, 20).build());
+            // Extra choices from other mods arrive in the service field as a comma list.
+            java.util.List<String> extra = java.util.List.of(view.service().split(","));
+            if (extra.contains("interrogate")) addRenderableWidget(Button.builder(Component.literal("Interrogate"), button -> {
+                NpcNetwork.send("interrogate", view.npc());
+                onClose();
+            }).bounds(left() + 35, top() + 116, 90, 20).build());
+            if (extra.contains("refuge")) addRenderableWidget(Button.builder(Component.literal("Send to refuge"), button -> {
+                NpcNetwork.send("refuge", view.npc());
+                onClose();
+            }).bounds(left() + 132, top() + 116, 90, 20).build());
         }
 
         @Override public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
@@ -108,7 +118,7 @@ public final class NpcClient {
             wrapped(graphics, "They dropped their weapon and wait for one minute. Take their supplies ("
                     + ("soldier".equals(view.role()) ? "1 canned food and 2 iron ingots" : "1 canned food, maybe a bandage")
                     + ") or let them go; either way they leave. A prisoner killed now drops nothing and costs Wardens trust.",
-                    20, 72, 212, 0xFFE3D9C9, 5);
+                    20, 66, 212, 0xFFE3D9C9, 4);
         }
     }
 

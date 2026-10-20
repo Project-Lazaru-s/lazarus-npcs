@@ -1,6 +1,7 @@
 package com.lazarus.npcs;
 
 import net.minecraft.nbt.CompoundTag;
+import com.lazarus.npcs.api.event.NpcApiEvents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -118,7 +119,35 @@ final class HumanSurrender {
     static void letGo(ServerPlayer player, Mob mob) {
         if (!canResolve(mob, player) || mob.distanceToSqr(player) > 64) return;
         player.sendSystemMessage(Component.literal("You let them go. They will not come back for you."));
+        NpcReputation.adjust(player, "haven", 1); // the Haven hears that you spared a life
         release(mob);
+    }
+
+    /** Extra choices offered by other mods (interrogate, send to the refuge); interrogation happens once. */
+    static java.util.Set<String> choices(ServerPlayer player, Mob mob) {
+        String kind = HumanEncounters.kind(mob);
+        if (kind == null || !canResolve(mob, player)) return java.util.Set.of();
+        NpcApiEvents.PrisonerChoices event = new NpcApiEvents.PrisonerChoices(player, mob, kind);
+        ApiBackend.post(event);
+        java.util.Set<String> choices = new java.util.LinkedHashSet<>(event.getChoices());
+        if (HumanEncounters.data(mob).getBoolean("Interrogated")) choices.remove(NpcApiEvents.PrisonerChoices.INTERROGATE);
+        return choices;
+    }
+
+    static void interrogate(ServerPlayer player, Mob mob) {
+        if (mob.distanceToSqr(player) > 64 || !choices(player, mob).contains(NpcApiEvents.PrisonerChoices.INTERROGATE)) return;
+        CompoundTag root = HumanEncounters.data(mob);
+        root.putBoolean("Interrogated", true);
+        HumanEncounters.putData(mob, root);
+        ApiBackend.post(new NpcApiEvents.PrisonerInterrogated(player, mob, HumanEncounters.kind(mob)));
+    }
+
+    /** The prisoner leaves for a new life elsewhere (another mod takes them in); they vanish from here. */
+    static void sendAway(ServerPlayer player, Mob mob) {
+        if (mob.distanceToSqr(player) > 64 || !choices(player, mob).contains(NpcApiEvents.PrisonerChoices.REFUGE)) return;
+        ApiBackend.post(new NpcApiEvents.PrisonerSentAway(player, mob, HumanEncounters.kind(mob)));
+        release(mob);
+        mob.discard();
     }
 
     private static void release(Mob mob) {

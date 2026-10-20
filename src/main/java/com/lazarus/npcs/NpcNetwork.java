@@ -101,7 +101,9 @@ final class NpcNetwork {
                 npc == null ? "" : encounter ? "independent" : NpcIdentity.faction(npc),
                 npc == null ? NpcTasks.summary(player) : encounter ? "" : NpcTasks.preview(player, npc),
                 npc == null ? NpcTasks.location(player) : "",
-                npc == null ? "" : encounter ? HumanEncounters.demand(kind) : NpcServices.summary(player, npc),
+                npc == null ? "" : "surrender".equals(page) && npc instanceof net.minecraft.world.entity.Mob prisoner
+                        ? String.join(",", HumanSurrender.choices(player, prisoner))
+                        : encounter ? HumanEncounters.demand(kind) : NpcServices.summary(player, npc),
                 contract, NpcStories.summary(player), npc == null ? EncounterTasks.journal(player) : "", reputation);
         CHANNEL.sendTo(view, player.connection.connection, NetworkDirection.PLAY_TO_CLIENT);
     }
@@ -127,9 +129,14 @@ final class NpcNetwork {
                     HumanEncounters.pay(player, npc);
                     return;
                 }
-                if (npc instanceof net.minecraft.world.entity.Mob prisoner && ("strip".equals(packet.kind) || "letgo".equals(packet.kind))) {
-                    if ("strip".equals(packet.kind)) HumanSurrender.strip(player, prisoner);
-                    else HumanSurrender.letGo(player, prisoner);
+                if (npc instanceof net.minecraft.world.entity.Mob prisoner && java.util.Set.of("strip", "letgo", "interrogate", "refuge")
+                        .contains(packet.kind)) {
+                    switch (packet.kind) {
+                        case "strip" -> HumanSurrender.strip(player, prisoner);
+                        case "letgo" -> HumanSurrender.letGo(player, prisoner);
+                        case "interrogate" -> HumanSurrender.interrogate(player, prisoner);
+                        default -> HumanSurrender.sendAway(player, prisoner);
+                    }
                     return;
                 }
                 if ("dismiss".equals(packet.kind)) {

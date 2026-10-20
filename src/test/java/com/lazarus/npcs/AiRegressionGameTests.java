@@ -215,6 +215,30 @@ public final class AiRegressionGameTests {
         });
     }
 
+    /** Deserters wear their own skins: a stable one of three per NPC, shipped in the jar; looters keep theirs. */
+    @GameTest(template = "arena", batch = "ai_deserter_skins", timeoutTicks = 20)
+    public static void desertersAndMilitaryWearTheirOwnSkins(GameTestHelper h) {
+        Mob deserter = NpcGameTests.npc(h, "soldiers", 6, 6), other = NpcGameTests.npc(h, "soldiers_02", 8, 6);
+        Mob looter = NpcGameTests.npc(h, "looter_1", 10, 6);
+        String key = ProfessionSkins.key(deserter);
+        h.assertTrue(key.matches("deserter_[1-3]") && key.equals(ProfessionSkins.key(deserter))
+                && ProfessionSkins.key(other).startsWith("deserter_"), "deserter skin key: " + key);
+        h.assertTrue(ProfessionSkins.key(looter).isEmpty(), "looters keep the Apocalypse Now look");
+        Mob soldier = NpcGameTests.npc(h, "military_01", 12, 6), medic = NpcGameTests.npc(h, "military_medic", 14, 6);
+        Mob cultist = NpcGameTests.npc(h, "cannibal", 16, 6);
+        h.assertTrue(ProfessionSkins.key(cultist).matches("hollow_[1-3]"), "Hollow skin: " + ProfessionSkins.key(cultist));
+        h.assertTrue(ProfessionSkins.key(soldier).matches("military_[1-3]") && ProfessionSkins.key(medic).equals("military_medic"),
+                "military skins: " + ProfessionSkins.key(soldier) + ", " + ProfessionSkins.key(medic));
+        List<String> files = new java.util.ArrayList<>(List.of("military_1", "military_2", "military_3", "military_medic"));
+        for (int i = 1; i <= ProfessionSkins.DESERTER_SKINS; i++) files.add("deserter_" + i);
+        for (int i = 1; i <= ProfessionSkins.HOLLOW_SKINS; i++) files.add("hollow_" + i);
+        for (String file : files)
+            h.assertTrue(ProfessionSkins.class.getResource("/assets/lazarusnpcs/textures/entity/profession/" + file + ".png") != null,
+                    file + ".png is packaged");
+        h.killAllEntities();
+        h.succeed();
+    }
+
     /** The goal itself (not just its search) walks a loose survivor to an untouched chest and takes from it. */
     @GameTest(template = "arena", batch = "ai_scavenge_goal", timeoutTicks = 600)
     public static void scavengerWalksToChest(GameTestHelper h) {

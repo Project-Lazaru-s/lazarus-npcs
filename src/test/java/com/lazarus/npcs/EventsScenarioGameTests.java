@@ -1288,6 +1288,111 @@ public final class EventsScenarioGameTests {
         h.succeed();
     }
 
+    // ---- Prisoner choices (hostiles V1, phase 4)
+
+    @SuppressWarnings("unchecked")
+    @GameTest(template = "arena", batch = "events_prisoner_choices", timeoutTicks = 40)
+    public static void prisonersCanTalkOrStartOver(GameTestHelper h) {
+        ServerLevel level = h.getLevel();
+        try {
+            Class<?> dataType = Class.forName("com.lazarus.events.FactionBaseData");
+            Class<?> baseType = Class.forName("com.lazarus.events.FactionBaseData$Base");
+            Method get = dataType.getDeclaredMethod("get", ServerLevel.class);
+            get.setAccessible(true);
+            Object data = get.invoke(null, level);
+            Field basesField = dataType.getDeclaredField("bases");
+            basesField.setAccessible(true);
+            List<Object> bases = (List<Object>) basesField.get(data);
+            Field factionField = baseType.getDeclaredField("faction");
+            factionField.setAccessible(true);
+            List<Object> setAside = new java.util.ArrayList<>();
+            for (Object existing : List.copyOf(bases))
+                if ("haven".equals(factionField.get(existing))) { setAside.add(existing); bases.remove(existing); }
+
+            ServerPlayer player = NpcGameTests.player(h, 10, 10);
+            Mob looter = NpcGameTests.npc(h, "looter_2", 12, 10), other = NpcGameTests.npc(h, "looter_3", 12, 12);
+            HumanSurrender.surrender(looter, "looter", player);
+            HumanSurrender.surrender(other, "looter", player);
+            h.assertTrue(HumanSurrender.choices(player, looter).equals(java.util.Set.of("interrogate")),
+                    "interrogation offered, no refuge yet: " + HumanSurrender.choices(player, looter));
+
+            Method add = dataType.getDeclaredMethod("add", String.class, BlockPos.class, int.class, String.class);
+            add.setAccessible(true);
+            Object refuge = add.invoke(data, "haven", h.absolutePos(new BlockPos(24, 2, 24)), 0, "test");
+            h.assertTrue(HumanSurrender.choices(player, looter).containsAll(List.of("interrogate", "refuge")), "refuge offered when it has room");
+
+            HumanSurrender.interrogate(player, looter);
+            h.assertTrue(HumanEncounters.data(looter).getBoolean("Interrogated")
+                    && !HumanSurrender.choices(player, looter).contains("interrogate"), "a prisoner is interrogated once");
+
+            HumanSurrender.sendAway(player, looter);
+            Field guestsField = baseType.getDeclaredField("guests");
+            guestsField.setAccessible(true);
+            var guests = (java.util.Map<String, net.minecraft.nbt.CompoundTag>) guestsField.get(refuge);
+            h.assertTrue(looter.isRemoved() && guests.size() == 1
+                    && guests.values().iterator().next().getString("Type").startsWith("apocalypsenow:survivor_"),
+                    "the prisoner leaves for the refuge in survivor clothes: " + guests);
+            h.assertTrue(NpcReputation.get(player, "haven") == 2, "+2 Haven for sending them to start over");
+            HumanSurrender.letGo(player, other);
+            h.assertTrue(NpcReputation.get(player, "haven") == 3, "+1 Haven for letting one go");
+
+            bases.remove(refuge);
+            bases.addAll(setAside);
+            done(h, player);
+            h.succeed();
+        } catch (ReflectiveOperationException failure) {
+            throw new IllegalStateException(failure);
+        }
+    }
+
+    // ---- Hollow den
+
+    @GameTest(template = "arena", batch = "events_hollow_den", timeoutTicks = 60)
+    public static void hollowDenHoldsACaptiveFreedWhenCleared(GameTestHelper h) {
+        loadedArena(h, () -> {
+            for (int x = 10; x <= 18; x++) for (int z = 10; z <= 18; z++) {
+                h.setBlock(new BlockPos(x, 5, z), Blocks.STONE_BRICKS);
+                if (x == 10 || x == 18 || z == 10 || z == 18)
+                    for (int y = 2; y <= 4; y++) h.setBlock(new BlockPos(x, y, z), Blocks.STONE_BRICKS);
+            }
+            h.setBlock(new BlockPos(14, 2, 10), Blocks.AIR);
+            h.setBlock(new BlockPos(14, 3, 10), Blocks.AIR);
+            ServerPlayer player = NpcGameTests.player(h, 14, 15);
+            try {
+                Class<?> dataType = Class.forName("com.lazarus.events.EventData");
+                Method get = dataType.getDeclaredMethod("get", ServerLevel.class);
+                get.setAccessible(true);
+                Object data = get.invoke(null, h.getLevel());
+                Object outcome = call("LazarusEvents", "attempt", new Class<?>[]{ServerLevel.class, ServerPlayer.class, String.class,
+                        boolean.class, boolean.class, dataType}, h.getLevel(), player, "hollow_den", true, true, data);
+                h.assertTrue(success(outcome), "den placed in the room");
+                AABB room = new AABB(h.absolutePos(new BlockPos(11, 2, 11)), h.absolutePos(new BlockPos(17, 3, 17))).inflate(0.5);
+                List<Mob> cultists = h.getLevel().getEntitiesOfClass(Mob.class, room, m -> "cannibal".equals(HumanEncounters.kind(m)));
+                List<Mob> captives = h.getLevel().getEntitiesOfClass(Mob.class, room, m -> m.getTags().contains("lazarusevents:captive"));
+                h.assertTrue(cultists.size() >= 2 && captives.size() == 1, "cultists " + cultists.size() + ", captives " + captives.size());
+                Mob captive = captives.get(0);
+                h.assertTrue(captive.isInvulnerable() && "survivor".equals(NpcIdentity.role(captive)), "a caged survivor");
+                boolean bars = false;
+                for (BlockPos pos : BlockPos.betweenClosed(captive.blockPosition().offset(-1, 0, -1), captive.blockPosition().offset(1, 1, 1)))
+                    if (h.getLevel().getBlockState(pos).is(Blocks.IRON_BARS)) bars = true;
+                h.assertTrue(bars, "iron bars around the captive");
+                Class<?>[] tick = {ServerLevel.class, dataType};
+                call("HostileHideouts", "tick", tick, h.getLevel(), data);
+                cultists.forEach(Mob::kill);
+                call("HostileHideouts", "tick", tick, h.getLevel(), data);
+                h.assertTrue(NpcReputation.get(player, "haven") >= 2, "cleared: +2 Haven");
+                h.assertTrue(!captive.isInvulnerable() && !captive.getTags().contains("lazarusevents:captive")
+                        && captive.getPersistentData().getLong("LazarusEventsLeaveForRefuge") > 0, "the captive is freed and leaves");
+                for (BlockPos pos : BlockPos.betweenClosed(captive.blockPosition().offset(-1, 0, -1), captive.blockPosition().offset(1, 1, 1)))
+                    h.assertTrue(!h.getLevel().getBlockState(pos).is(Blocks.IRON_BARS), "the cage is open");
+            } catch (ReflectiveOperationException failure) {
+                throw new IllegalStateException(failure);
+            }
+            done(h, player);
+            h.succeed();
+        });
+    }
+
     @GameTest(template = "arena", batch = "events_passage_api", timeoutTicks = 20)
     public static void passageOnlyForTollTakers(GameTestHelper h) {
         ServerPlayer player = NpcGameTests.player(h, 10, 10);
