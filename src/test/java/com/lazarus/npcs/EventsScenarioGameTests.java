@@ -1056,6 +1056,80 @@ public final class EventsScenarioGameTests {
         }
     }
 
+    // ---- Hostile lore and bounties (hostiles V1, phases 1-2)
+
+    @GameTest(template = "arena", batch = "events_hostile_lore", timeoutTicks = 20)
+    public static void hostileGroupsLeaveProofAndNotes(GameTestHelper h) {
+        long seed = h.getLevel().getSeed();
+        String here = com.lazarus.npcs.api.HostileGroups.gang(seed, 100, 100);
+        h.assertTrue(here.equals(com.lazarus.npcs.api.HostileGroups.gang(seed, 400, 300)), "one gang per territory");
+        java.util.Set<String> gangs = new java.util.HashSet<>();
+        for (int i = 0; i < 16; i++) gangs.add(com.lazarus.npcs.api.HostileGroups.gang(seed, i * 512, i * 1024));
+        h.assertTrue(gangs.size() >= 3, "territories differ: " + gangs);
+        Mob deserter = NpcGameTests.npc(h, "soldiers", 6, 6), looter = NpcGameTests.npc(h, "looter_2", 10, 6);
+        Mob cultist = NpcGameTests.npc(h, "cannibal", 14, 6), survivor = NpcGameTests.npc(h, "survivor_1", 18, 6);
+        Class<?>[] one = {net.minecraft.world.entity.LivingEntity.class};
+        h.assertTrue("deserter".equals(call("HostileLore", "group", one, deserter))
+                && "looter".equals(call("HostileLore", "group", one, looter))
+                && "cultist".equals(call("HostileLore", "group", one, cultist))
+                && call("HostileLore", "group", one, survivor) == null, "hostile groups recognised");
+        Class<?>[] proofTypes = {ServerLevel.class, net.minecraft.world.entity.LivingEntity.class, String.class};
+        ItemStack patch = (ItemStack) call("HostileLore", "proof", proofTypes, h.getLevel(), looter, "looter");
+        h.assertTrue(patch.is(item("lazarusevents:gang_patch")) && patch.getOrCreateTag().getString("Gang")
+                .equals(com.lazarus.npcs.api.HostileGroups.gang(h.getLevel(), looter.blockPosition())), "patch names the local gang");
+        h.assertTrue(((ItemStack) call("HostileLore", "proof", proofTypes, h.getLevel(), deserter, "deserter")).is(item("lazarusevents:dog_tags"))
+                && ((ItemStack) call("HostileLore", "proof", proofTypes, h.getLevel(), cultist, "cultist")).is(item("lazarusevents:bone_charm")),
+                "dog tags and bone charms");
+        for (String group : List.of("deserter", "looter", "cultist")) {
+            ItemStack note = (ItemStack) call("HostileLore", "note", new Class<?>[]{String.class, int.class}, group, 3);
+            h.assertTrue(note.is(net.minecraft.world.item.Items.WRITTEN_BOOK) && note.getOrCreateTag().getList("pages", 8).size() >= 2,
+                    group + " note is a written book");
+        }
+        h.killAllEntities();
+        h.succeed();
+    }
+
+    @GameTest(template = "arena", batch = "events_hostile_bounty", timeoutTicks = 60)
+    public static void factionsPayForHostileProof(GameTestHelper h) {
+        UUID encounter = UUID.randomUUID();
+        List<Mob> staff = base(h, encounter);
+        Mob soldier = staff.stream().filter(m -> "military".equals(NpcIdentity.role(m))).findFirst().orElseThrow();
+        BlockPos at = soldier.blockPosition().subtract(h.absolutePos(BlockPos.ZERO));
+        ServerPlayer player = NpcGameTests.player(h, at.getX() + 2, at.getZ());
+        Item tags = item("lazarusevents:dog_tags"), charm = item("lazarusevents:bone_charm"), patch = item("lazarusevents:gang_patch");
+        player.getInventory().add(new ItemStack(tags, 2));
+        h.assertTrue(NpcDialogues.open(player, soldier, DialogueTrigger.INTERACT, null)
+                && !NpcDialogues.session(player).dialogue().toString().equals("lazarusevents:hostile_bounty"), "two tags are not enough");
+        player.getInventory().add(new ItemStack(tags, 1));
+        h.assertTrue(NpcDialogues.open(player, soldier, DialogueTrigger.INTERACT, null)
+                && NpcDialogues.session(player).dialogue().toString().equals("lazarusevents:hostile_bounty"), "bounty offered with three tags");
+        choose(player, soldier, 0);
+        h.assertTrue(player.getInventory().countItem(tags) == 0 && NpcReputation.get(player, "military") == 2, "tags paid: +2 Military");
+        h.assertTrue(player.getInventory().countItem(item("tacz:ammo")) > 0, "ammunition reward");
+
+        Mob leader = NpcGameTests.npc(h, "survivor_1", at.getX() + 3, at.getZ() + 2);
+        Mob guard = NpcGameTests.npc(h, "survivor_7", at.getX() + 4, at.getZ() + 2);
+        UUID havenBase = UUID.randomUUID(), wardensBase = UUID.randomUUID(); // base professions need a base id
+        h.assertTrue(NpcApi.assignProfession(leader, new ResourceLocation("lazarusnpcs", "leader"), havenBase).ok()
+                && NpcApi.assignProfession(guard, new ResourceLocation("lazarusnpcs", "guard"), wardensBase).ok(), "professions for the test");
+        Class<?> bountyType;
+        try { bountyType = Class.forName("com.lazarus.events.HostileLore$Bounty"); }
+        catch (ClassNotFoundException missing) { throw new IllegalStateException(missing); }
+        Class<?>[] npc = {net.minecraft.world.entity.LivingEntity.class};
+        Class<?>[] pay = {ServerPlayer.class, bountyType};
+        player.getInventory().add(new ItemStack(charm, 2));
+        Object havenBounty = ((java.util.Optional<?>) call("HostileLore", "bountyFor", npc, leader)).orElseThrow();
+        h.assertTrue((boolean) call("HostileLore", "turnIn", pay, player, havenBounty)
+                && NpcReputation.get(player, "haven") == 3 && player.getInventory().countItem(charm) == 0, "charms paid: +3 Haven");
+        h.assertTrue(!(boolean) call("HostileLore", "turnIn", pay, player, havenBounty), "nothing left to pay for");
+        player.getInventory().add(new ItemStack(patch, 3));
+        Object wardensBounty = ((java.util.Optional<?>) call("HostileLore", "bountyFor", npc, guard)).orElseThrow();
+        h.assertTrue((boolean) call("HostileLore", "turnIn", pay, player, wardensBounty)
+                && NpcReputation.get(player, "wardens") == 2, "patches paid: +2 Wardens");
+        done(h, player);
+        h.succeed();
+    }
+
     @GameTest(template = "arena", batch = "events_passage_api", timeoutTicks = 20)
     public static void passageOnlyForTollTakers(GameTestHelper h) {
         ServerPlayer player = NpcGameTests.player(h, 10, 10);

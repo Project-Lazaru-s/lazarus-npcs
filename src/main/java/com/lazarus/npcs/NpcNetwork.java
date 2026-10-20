@@ -94,7 +94,7 @@ final class NpcNetwork {
         String contract = npc == null ? NpcContracts.playerSummary(player)
                 : encounter || !NpcContracts.canGuard(npc) ? "" : NpcContracts.npcStatus(player, npc);
         View view = new View(page, npc == null ? new UUID(0, 0) : npc.getUUID(),
-                npc == null ? "" : encounter ? HumanEncounters.label(kind) : NpcIdentity.name(npc),
+                npc == null ? "" : encounter ? HumanEncounters.title(npc, kind) : NpcIdentity.name(npc),
                 npc == null ? "" : encounter ? kind : NpcIdentity.role(npc),
                 npc == null || encounter ? "" : NpcProfessions.get(npc),
                 npc != null && NpcProfessions.base(npc) != null,

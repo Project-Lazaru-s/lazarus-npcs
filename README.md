@@ -6,7 +6,7 @@
   <img alt="Minecraft 1.20.1" src="https://img.shields.io/badge/Minecraft-1.20.1-3c8527">
   <img alt="Forge 47.x" src="https://img.shields.io/badge/Forge-47.x-dd7d2b">
   <img alt="Java 17" src="https://img.shields.io/badge/Java-17-b07219">
-  <img alt="Versão 1.14.0" src="https://img.shields.io/badge/vers%C3%A3o-1.14.0-6b5b3e">
+  <img alt="Versão 1.15.0" src="https://img.shields.io/badge/vers%C3%A3o-1.15.0-6b5b3e">
 </p>
 
 # Lazarus NPCs
@@ -279,7 +279,7 @@ O script [`scripts/patch_soldier_loot.py`](scripts/patch_soldier_loot.py) ajusta
 
 ### Jogadores e servidores
 
-1. Compile `lazarusnpcs-1.14.0.jar` em `build/libs/` e instale os mods exigidos acima. O Lazarus Events 0.16.0 exige NPCs 1.14.0 ou posterior.
+1. Compile `lazarusnpcs-1.15.0.jar` em `build/libs/` e instale os mods exigidos acima. O Lazarus Events 0.17.0 exige NPCs 1.15.0 ou posterior.
 2. Coloque o JAR na pasta `mods` do perfil. No CurseForge, clique com o botão direito no perfil e escolha **Open Folder**.
 3. Em multiplayer, instale a **mesma versão** no servidor e em todos os clientes. Versões com protocolo diferente recusam a conexão em vez de falhar.
 4. Remova qualquer JAR antigo `lazarusnpcs` antes de atualizar e reinicie o Minecraft.

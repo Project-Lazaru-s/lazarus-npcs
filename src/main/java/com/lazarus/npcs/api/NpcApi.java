@@ -33,7 +33,7 @@ import java.util.UUID;
  * and never makes a hostile NPC negotiate.</p>
  */
 public final class NpcApi {
-    public static final int API_VERSION = 5;
+    public static final int API_VERSION = 6;
     /** Outcome for {@link #finishTask}: complete and pay the rewards. */
     public static final ResourceLocation TASK_COMPLETED = new ResourceLocation("lazarusnpcs", "completed");
     /** Outcome for {@link #finishTask}: fail without rewards. Any other outcome id also fails and is reported as-is. */

@@ -51,6 +51,12 @@ final class HumanEncounters {
         };
     }
 
+    /** The group's name in the world: looters carry the gang that holds these streets. */
+    static String title(LivingEntity npc, String kind) {
+        if (!"looter".equals(kind) || !(npc.level() instanceof net.minecraft.server.level.ServerLevel level)) return label(kind);
+        return label(kind) + " (" + com.lazarus.npcs.api.HostileGroups.gang(level, npc.blockPosition()) + ")";
+    }
+
     static String demand(String kind) {
         return "soldier".equals(kind) ? "2 canned food and 2 iron ingots" : "2 canned food";
     }
@@ -127,9 +133,9 @@ final class HumanEncounters {
         LAST_WARNING.put(player.getUUID(), now);
         String warning = switch (kind) {
             case "cannibal" -> "Something is following you. Get away now!";
-            case "soldier" -> "Rogue checkpoint: \"Halt! Pay the toll or turn back.\" Approach with empty hands to negotiate; crossing their line starts a fight.";
+            case "soldier" -> "Deserters' checkpoint: \"Halt! Pay the toll or turn back.\" Approach with empty hands to negotiate; crossing their line starts a fight.";
             default -> (HumanTactics.isLookout(mob) ? "A looter lookout spots you and whistles. " : "")
-                    + "Looters demand supplies. Approach with empty hands to negotiate, or leave the area.";
+                    + title(mob, kind) + " demand supplies. Approach with empty hands to negotiate, or leave the area.";
         };
         player.sendSystemMessage(Component.literal(warning).withStyle(style -> style.withColor(0xD48968)));
     }
