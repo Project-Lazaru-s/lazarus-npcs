@@ -1463,6 +1463,57 @@ public final class EventsScenarioGameTests {
         });
     }
 
+    // ---- Infested zone (events V1, phase 2)
+
+    @SuppressWarnings("unchecked")
+    @GameTest(template = "arena", batch = "events_infested_zone", timeoutTicks = 40)
+    public static void infestedZoneLivesAndDiesWithItsNest(GameTestHelper h) {
+        ServerLevel level = h.getLevel();
+        BlockPos nestPos = h.absolutePos(new BlockPos(16, 2, 16));
+        try {
+            Class<?> dataType = Class.forName("com.lazarus.events.EventData");
+            Method get = dataType.getDeclaredMethod("get", ServerLevel.class);
+            get.setAccessible(true);
+            Object data = get.invoke(null, level);
+            Method add = dataType.getDeclaredMethod("add", UUID.class, String.class, BlockPos.class, long.class);
+            add.setAccessible(true);
+            UUID id = UUID.randomUUID();
+            Object nest = add.invoke(data, id, "zombie_nest", nestPos, level.getGameTime());
+            Class<?>[] at = {ServerLevel.class, BlockPos.class};
+            h.assertTrue(call("InfestedZone", "zoneAt", at, level, nestPos.offset(40, 0, 0)) != null, "40 blocks out is infested");
+            h.assertTrue(call("InfestedZone", "zoneAt", at, level, nestPos.offset(90, 0, 0)) == null, "90 blocks out is not");
+
+            BlockPos chest = h.absolutePos(new BlockPos(20, 2, 20));
+            level.setBlock(chest, Blocks.CHEST.defaultBlockState(), 3);
+            ((net.minecraft.world.level.block.entity.ChestBlockEntity) level.getBlockEntity(chest))
+                    .setLootTable(net.minecraft.world.level.storage.loot.BuiltInLootTables.SIMPLE_DUNGEON, 3L);
+            h.assertTrue((boolean) call("InfestedZone", "addBonus", at, level, chest), "untouched loot gets a bonus item");
+            h.assertTrue(!(boolean) call("InfestedZone", "addBonus", at, level, chest), "only once per container");
+
+            ServerPlayer player = NpcGameTests.player(h, 14, 14);
+            Class<?>[] tick = {ServerLevel.class, Class.forName("com.lazarus.events.EventData$Encounter")};
+            call("InfestedZone", "tick", tick, level, nest);
+            call("InfestedZone", "tick", tick, level, nest);
+            var warned = player.getPersistentData().getCompound(net.minecraft.world.entity.player.Player.PERSISTED_NBT_TAG)
+                    .getList("LazarusEventsInfestedWarned", 8);
+            h.assertTrue(warned.size() == 1 && warned.getString(0).equals(id.toString()), "warned once on entering");
+
+            Method remove = dataType.getDeclaredMethod("remove", UUID.class);
+            remove.setAccessible(true);
+            remove.invoke(data, id);
+            BlockPos second = h.absolutePos(new BlockPos(22, 2, 20));
+            level.setBlock(second, Blocks.CHEST.defaultBlockState(), 3);
+            ((net.minecraft.world.level.block.entity.ChestBlockEntity) level.getBlockEntity(second))
+                    .setLootTable(net.minecraft.world.level.storage.loot.BuiltInLootTables.SIMPLE_DUNGEON, 4L);
+            h.assertTrue(call("InfestedZone", "zoneAt", at, level, nestPos) == null
+                    && !(boolean) call("InfestedZone", "addBonus", at, level, second), "the zone ends with the nest");
+            done(h, player);
+            h.succeed();
+        } catch (ReflectiveOperationException failure) {
+            throw new IllegalStateException(failure);
+        }
+    }
+
     @GameTest(template = "arena", batch = "events_passage_api", timeoutTicks = 20)
     public static void passageOnlyForTollTakers(GameTestHelper h) {
         ServerPlayer player = NpcGameTests.player(h, 10, 10);
