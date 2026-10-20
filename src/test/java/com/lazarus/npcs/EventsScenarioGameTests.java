@@ -1393,6 +1393,76 @@ public final class EventsScenarioGameTests {
         });
     }
 
+    // ---- Zombie nest (events V1, phase 1)
+
+    @SuppressWarnings("unchecked")
+    @GameTest(template = "arena", batch = "events_zombie_nest", timeoutTicks = 60)
+    public static void nestSpawnsUntilItsPustulesAreGone(GameTestHelper h) {
+        loadedArena(h, () -> {
+            for (int x = 10; x <= 18; x++) for (int z = 10; z <= 18; z++) {
+                h.setBlock(new BlockPos(x, 5, z), Blocks.STONE_BRICKS);
+                if (x == 10 || x == 18 || z == 10 || z == 18)
+                    for (int y = 2; y <= 4; y++) h.setBlock(new BlockPos(x, y, z), Blocks.STONE_BRICKS);
+            }
+            h.setBlock(new BlockPos(14, 2, 10), Blocks.AIR);
+            h.setBlock(new BlockPos(14, 3, 10), Blocks.AIR);
+            ServerPlayer player = NpcGameTests.player(h, 14, 15);
+            try {
+                Class<?> dataType = Class.forName("com.lazarus.events.EventData");
+                Method get = dataType.getDeclaredMethod("get", ServerLevel.class);
+                get.setAccessible(true);
+                Object data = get.invoke(null, h.getLevel());
+                Object outcome = call("LazarusEvents", "attempt", new Class<?>[]{ServerLevel.class, ServerPlayer.class, String.class,
+                        boolean.class, boolean.class, dataType}, h.getLevel(), player, "zombie_nest", true, true, data);
+                h.assertTrue(success(outcome), "nest grown in the room");
+                Field list = dataType.getDeclaredField("encounters");
+                list.setAccessible(true);
+                Class<?> encounterType = Class.forName("com.lazarus.events.EventData$Encounter");
+                Field typeField = encounterType.getDeclaredField("type"), dataField = encounterType.getDeclaredField("data");
+                typeField.setAccessible(true);
+                dataField.setAccessible(true);
+                Object nest = null;
+                for (Object entry : (List<Object>) list.get(data))
+                    if ("zombie_nest".equals(typeField.get(entry))
+                            && ((net.minecraft.nbt.CompoundTag) dataField.get(entry)).getLongArray("Pustules").length > 0
+                            && BlockPos.of(((net.minecraft.nbt.CompoundTag) dataField.get(entry)).getLongArray("Pustules")[0])
+                                    .closerThan(h.absolutePos(new BlockPos(14, 2, 14)), 8)) nest = entry;
+                h.assertTrue(nest != null, "nest encounter saved");
+                net.minecraft.nbt.CompoundTag state = (net.minecraft.nbt.CompoundTag) dataField.get(nest);
+                h.assertTrue(state.getBoolean("Persistent"), "nests do not expire");
+                long[] pustules = state.getLongArray("Pustules");
+                h.assertTrue(pustules.length >= 3, "three to five pustules: " + pustules.length);
+                net.minecraft.world.level.block.state.BlockState pustuleState = h.getLevel().getBlockState(BlockPos.of(pustules[0]));
+                h.assertTrue(pustuleState.is(Blocks.NETHER_WART_BLOCK), "pustules are not zombie bait: " + pustuleState);
+
+                Class<?>[] tick = {ServerLevel.class, dataType};
+                call("ZombieNest", "tick", tick, h.getLevel(), data);
+                Field idField = encounterType.getDeclaredField("id");
+                idField.setAccessible(true);
+                String tag = "lazarusevents:" + idField.get(nest);
+                AABB area = new AABB(h.absolutePos(new BlockPos(14, 2, 14))).inflate(48);
+                h.assertTrue(h.getLevel().getEntitiesOfClass(Mob.class, area, m -> m.getTags().contains(tag)).size() == 1,
+                        "the nest produced an infected");
+
+                BlockPos first = BlockPos.of(pustules[0]);
+                player.gameMode.destroyBlock(first);
+                h.assertTrue(!h.getLevel().getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, new AABB(first).inflate(1.5),
+                        item -> item.getItem().is(item("lazarusevents:infected_sample"))).isEmpty(), "a broken pustule drops a sample");
+                for (long packed : pustules) h.getLevel().setBlock(BlockPos.of(packed), Blocks.AIR.defaultBlockState(), 3);
+                call("ZombieNest", "tick", tick, h.getLevel(), data);
+                h.assertTrue(NpcReputation.get(player, "military") == 2 && NpcReputation.get(player, "haven") == 2,
+                        "a dead nest pays the Military and the Haven: military " + NpcReputation.get(player, "military")
+                                + ", haven " + NpcReputation.get(player, "haven") + ", nest still listed "
+                                + ((List<Object>) list.get(data)).contains(nest) + ", pustules " + state);
+                h.assertTrue(!((List<Object>) list.get(data)).contains(nest), "the nest ends");
+            } catch (ReflectiveOperationException failure) {
+                throw new IllegalStateException(failure);
+            }
+            done(h, player);
+            h.succeed();
+        });
+    }
+
     @GameTest(template = "arena", batch = "events_passage_api", timeoutTicks = 20)
     public static void passageOnlyForTollTakers(GameTestHelper h) {
         ServerPlayer player = NpcGameTests.player(h, 10, 10);
