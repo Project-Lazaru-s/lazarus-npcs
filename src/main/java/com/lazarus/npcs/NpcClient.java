@@ -156,14 +156,9 @@ public final class NpcClient {
         }
 
         private static int factionColor(String faction) {
-            return 0xFF000000 | switch (faction) {
-                case "haven" -> 0x8FCB91;
-                case "rovers" -> 0xE0AE67;
-                case "wardens" -> 0x84B5D6;
-                case "military" -> 0xB5C48B;
-                case "hostile" -> 0xD48968;
-                default -> 0xD8C6AA;
-            };
+            var definition = com.lazarus.npcs.api.NpcFactions.get(faction);
+            return 0xFF000000 | (definition == null
+                    ? "hostile".equals(faction) ? 0xD48968 : 0xD8C6AA : definition.color());
         }
     }
 
@@ -200,6 +195,7 @@ public final class NpcClient {
 
     private static final class JournalScreen extends PaperScreen {
         private final NpcNetwork.View view;
+        private int reputationPage;
         JournalScreen(NpcNetwork.View view) { super("Survivor Journal"); this.view = view; }
 
         @Override protected void init() {
@@ -209,11 +205,20 @@ public final class NpcClient {
                 case 1 -> "Contracts";
                 case 2 -> "Stories";
                 case 3 -> "Encounters";
+                case 4 -> "Reputation";
                 default -> "Task";
             }), button -> {
-                journalTab = (journalTab + 1) % 4;
+                journalTab = (journalTab + 1) % 5;
                 rebuildWidgets();
             }).bounds(left() + 138, top() + 8, 60, 16).build());
+            if (journalTab == 4 && NpcIdentity.FACTIONS.length > 8) {
+                addRenderableWidget(Button.builder(Component.literal("<"), button -> {
+                    reputationPage = Math.max(0, reputationPage - 1);
+                }).bounds(left() + 55, top() + 172, 28, 16).build());
+                addRenderableWidget(Button.builder(Component.literal(">"), button -> {
+                    reputationPage = Math.min((NpcIdentity.FACTIONS.length - 1) / 8, reputationPage + 1);
+                }).bounds(left() + 173, top() + 172, 28, 16).build());
+            }
             if (journalTab == 1) {
                 if (!view.contract().startsWith("No active"))
                     addRenderableWidget(Button.builder(Component.literal("Release all contracts"), button ->
@@ -241,6 +246,18 @@ public final class NpcClient {
         @Override public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
             super.render(graphics, mouseX, mouseY, partialTick);
             label(graphics, "LAZARUS / JOURNAL", 17, 13, 0xFFE4D9C8);
+            if (journalTab == 4) {
+                label(graphics, "FACTION REPUTATION", 20, 39, 0xFFD4A185);
+                for (int i = reputationPage * 8; i < Math.min(NpcIdentity.FACTIONS.length, (reputationPage + 1) * 8); i++) {
+                    int y = 56 + (i % 8) * 14;
+                    String name = NpcIdentity.label(NpcIdentity.FACTIONS[i]);
+                    label(graphics, name, 20, y, 0xFFE3D9C9);
+                    String score = (NpcHostility.isEnemyStanding(view.reputation()[i]) ? "ENEMY  " : "")
+                            + view.reputation()[i] + "/100";
+                    label(graphics, score, 230 - font.width(score), y, 0xFFFFFFFF);
+                }
+                return;
+            }
             if (journalTab == 3) {
                 label(graphics, "ENCOUNTER TASK", 20, 39, 0xFFD4A185);
                 if (view.encounter().isEmpty()) {
@@ -282,12 +299,13 @@ public final class NpcClient {
                 label(graphics, font.plainSubstrByWidth(where[i], 152), 20, 93 + i * 11, i == 0 ? 0xFFD4A185 : 0xFFB9A995);
             graphics.fill(left() + 18, top() + 117, left() + 238, top() + 118, 0xFF7B473A);
             label(graphics, "FACTION REPUTATION", 20, 124, 0xFFD4A185);
-            for (int i = 0; i < NpcIdentity.FACTIONS.length; i++) {
+            for (int i = 0; i < Math.min(4, NpcIdentity.FACTIONS.length); i++) {
                 String name = NpcIdentity.label(NpcIdentity.FACTIONS[i]);
                 label(graphics, name, 20, 140 + i * 13, 0xFFE3D9C9);
                 String score = (NpcHostility.isEnemyStanding(view.reputation()[i]) ? "ENEMY  " : "") + view.reputation()[i] + "/100";
                 label(graphics, score, 230 - font.width(score), 140 + i * 13, 0xFFFFFFFF);
             }
+            label(graphics, "More standings: Reputation tab", 20, 191, 0xFFB9A995);
         }
     }
 
@@ -324,16 +342,20 @@ public final class NpcClient {
                 return;
             }
             if (lastTab == 0) {
-                addRenderableWidget(Button.builder(Component.literal("Open trade offers"), button -> action("trade"))
-                        .bounds(left() + 42, top() + 105, 172, 20).build());
+                if (!view.baseMember() || "trader".equals(view.profession()) || "armorer".equals(view.profession()))
+                    addRenderableWidget(Button.builder(Component.literal("Open trade offers"), button -> action("trade"))
+                            .bounds(left() + 42, top() + 105, 172, 20).build());
             } else if (lastTab == 1) {
                 String role = view.role();
-                String service = "survivor".equals(role) ? "repair" : "medic".equals(role) ? "stabilize" : "hunter".equals(role) ? "scout" : "escort";
-                addRenderableWidget(Button.builder(Component.literal("Request " + service), button -> action(service))
-                        .bounds(left() + 42, top() + 123, 172, 20).build());
+                String service = "medic".equals(view.profession()) ? "stabilize" : "survivor".equals(role) ? "repair"
+                        : "medic".equals(role) ? "stabilize" : "hunter".equals(role) ? "scout" : "escort";
+                if (!view.baseMember() || "armorer".equals(view.profession()) || "medic".equals(view.profession()))
+                    addRenderableWidget(Button.builder(Component.literal("Request " + service), button -> action(service))
+                            .bounds(left() + 42, top() + 123, 172, 20).build());
             } else {
-                addRenderableWidget(Button.builder(Component.literal("Accept / turn in task"), button -> action("task"))
-                        .bounds(left() + 42, top() + 154, 172, 20).build());
+                if (!view.baseMember() || "leader".equals(view.profession()))
+                    addRenderableWidget(Button.builder(Component.literal("Accept / turn in task"), button -> action("task"))
+                            .bounds(left() + 42, top() + 154, 172, 20).build());
             }
         }
 
@@ -342,25 +364,37 @@ public final class NpcClient {
         @Override public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
             super.render(graphics, mouseX, mouseY, partialTick);
             label(graphics, view.name(), 17, 14, 0xFFF4ECE0);
-            label(graphics, NpcIdentity.label(view.faction()), 18, 31, 0xFFD4A185);
+            String subtitle = NpcIdentity.label(view.faction());
+            if (!view.profession().isEmpty()) subtitle += " / " + view.profession().replace('_', ' ');
+            label(graphics, subtitle, 18, 31, 0xFFD4A185);
             if (lastTab == 0) {
-                wrapped(graphics, "Inspect this survivor's current stock and negotiate using the established trade menu.", 21, 76, 211, 0xFFE3D9C9);
+                wrapped(graphics, view.baseMember() && !"trader".equals(view.profession()) && !"armorer".equals(view.profession())
+                        ? "This base member does not trade. Ask the armorer or merchant."
+                        : "Inspect this survivor's current stock and negotiate using the established trade menu.",
+                        21, 76, 211, 0xFFE3D9C9);
             } else if (lastTab == 1) {
-                String service = switch (view.role()) {
-                    case "survivor" -> "Repair 25% durability. Cost: 3 iron ingots. Cooldown: 5 min.";
-                    case "medic" -> "Heal 4 hearts and clear poison/weakness. Cost: 2 bandages + 1 canned water.";
-                    case "hunter" -> "Scout infected and untouched supplies. Cost: 1 canned food. Cooldown: 3 min.";
-                    default -> "Escort for 5 min: follows a few steps behind and defends you. Cost: 3 canned food + 2 iron ingots.";
-                };
-                wrapped(graphics, service, 21, 77, 213, 0xFFE3D9C9);
-                wrapped(graphics, view.service(), 21, 150, 213, 0xFFD4A185);
+                if (view.baseMember() && !"armorer".equals(view.profession()) && !"medic".equals(view.profession())) {
+                    wrapped(graphics, "At this base the armorer repairs gear and the medic treats wounds.", 21, 77, 213, 0xFFE3D9C9);
+                } else {
+                    String service = switch ("medic".equals(view.profession()) ? "medic" : view.role()) {
+                        case "survivor" -> "Repair 25% durability. Cost: 3 iron ingots. Cooldown: 5 min.";
+                        case "medic" -> "Heal 4 hearts and clear poison/weakness. Cost: 2 bandages + 1 canned water.";
+                        case "hunter" -> "Scout infected and untouched supplies. Cost: 1 canned food. Cooldown: 3 min.";
+                        default -> "Escort for 5 min: follows a few steps behind and defends you. Cost: 3 canned food + 2 iron ingots.";
+                    };
+                    wrapped(graphics, service, 21, 77, 213, 0xFFE3D9C9);
+                    wrapped(graphics, view.service(), 21, 150, 213, 0xFFD4A185);
+                }
             } else if (lastTab == 3) {
                 wrapped(graphics, "Guards hold the spot where you stand now and fight threats inside the chosen area. Only you can renew, change or dismiss them.",
                         21, 70, 213, 0xFFE3D9C9, 3);
                 wrapped(graphics, view.contract(), 21, 107, 213, 0xFFD4A185, 2);
             } else {
                 label(graphics, "TASK / REWARD", 21, 77, 0xFFD4A185);
-                wrapped(graphics, view.task(), 21, 94, 213, 0xFFE3D9C9, 4);
+                wrapped(graphics, view.baseMember()
+                        ? "leader".equals(view.profession()) ? "Ask the leader about faction missions."
+                            : "Faction missions are assigned by the base leader."
+                        : view.task(), 21, 94, 213, 0xFFE3D9C9, 4);
             }
             label(graphics, "Standing: " + ("independent".equals(view.faction()) ? "Neutral"
                     : view.reputation()[java.util.Arrays.asList(NpcIdentity.FACTIONS).indexOf(view.faction())] + "/100"),

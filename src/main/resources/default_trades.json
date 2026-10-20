@@ -51,6 +51,34 @@
     {"cost":"minecraft:iron_ingot","count":7,"result":"apocalypsenow:hunting_helmet","resultCount":1,"uses":1},
     {"cost":"minecraft:copper_ingot","count":4,"result":"apocalypsenow:aabattery","resultCount":3,"uses":2}
   ],
+  "rovers_trader": [
+    {"cost":"minecraft:copper_ingot","count":4,"result":"apocalypsenow:canned_water","resultCount":2,"uses":4},
+    {"cost":"minecraft:wheat","count":8,"result":"apocalypsenow:canned_food","resultCount":2,"uses":4},
+    {"cost":"minecraft:leather","count":4,"result":"apocalypsenow:climbingropewithhook","resultCount":1,"uses":2},
+    {"cost":"apocalypsenow:cloth","count":4,"result":"apocalypsenow:bandage","resultCount":2,"uses":3},
+    {"cost":"apocalypsenow:broken_radio","count":1,"result":"apocalypsenow:aabattery","resultCount":3,"uses":2}
+  ],
+  "wardens_trader": [
+    {"cost":"minecraft:iron_ingot","count":3,"result":"apocalypsenow:canned_food","resultCount":2,"uses":4},
+    {"cost":"minecraft:copper_ingot","count":4,"result":"apocalypsenow:canned_water","resultCount":2,"uses":4},
+    {"cost":"apocalypsenow:cleanrags","count":3,"result":"apocalypsenow:bandage","resultCount":2,"uses":3},
+    {"cost":"minecraft:copper_ingot","count":5,"result":"apocalypsenow:radio","resultCount":1,"uses":1},
+    {"cost":"minecraft:iron_ingot","count":5,"result":"apocalypsenow:can_opener","resultCount":1,"uses":2}
+  ],
+  "rovers_armorer": [
+    {"cost":"minecraft:iron_ingot","count":10,"secondCost":"minecraft:leather","secondCount":3,"result":"apocalypsenow:cheap_survival_machete","resultCount":1,"uses":2},
+    {"cost":"minecraft:iron_ingot","count":8,"secondCost":"minecraft:leather","secondCount":2,"result":"apocalypsenow:hunting_helmet","resultCount":1,"uses":2},
+    {"cost":"minecraft:iron_ingot","count":12,"secondCost":"minecraft:leather","secondCount":4,"result":"apocalypsenow:civilian_body_vest_chestplate","resultCount":1,"uses":1},
+    {"cost":"minecraft:iron_ingot","count":16,"secondCost":"apocalypsenow:canned_food","secondCount":4,"result":"tacz:modern_kinetic_gun","resultNbt":"{GunId:\"tacz:glock_17\"}","resultCount":1,"uses":1},
+    {"cost":"minecraft:iron_ingot","count":4,"result":"tacz:ammo","resultNbt":"{AmmoId:\"tacz:9mm\"}","resultCount":12,"uses":2}
+  ],
+  "wardens_armorer": [
+    {"cost":"minecraft:iron_ingot","count":10,"secondCost":"minecraft:leather","secondCount":3,"result":"apocalypsenow:ballistic_shield","resultCount":1,"uses":1},
+    {"cost":"minecraft:iron_ingot","count":14,"secondCost":"minecraft:leather","secondCount":4,"result":"apocalypsenow:bulletproof_vest_chestplate","resultCount":1,"uses":1},
+    {"cost":"minecraft:iron_ingot","count":10,"secondCost":"minecraft:leather","secondCount":3,"result":"apocalypsenow:us_army_helmet","resultCount":1,"uses":1},
+    {"cost":"minecraft:iron_ingot","count":22,"secondCost":"apocalypsenow:canned_food","secondCount":5,"result":"tacz:modern_kinetic_gun","resultNbt":"{GunId:\"tacz:m1911\"}","resultCount":1,"uses":1},
+    {"cost":"minecraft:iron_ingot","count":5,"result":"tacz:ammo","resultNbt":"{AmmoId:\"tacz:45acp\"}","resultCount":12,"uses":2}
+  ],
   "military": [
     {"cost":"minecraft:iron_ingot","count":3,"result":"apocalypsenow:bandage","resultCount":2,"uses":3},
     {"cost":"minecraft:iron_ingot","count":6,"secondCost":"apocalypsenow:canned_food","secondCount":2,"result":"apocalypsenow:cheap_survival_knife","resultCount":1,"uses":2},

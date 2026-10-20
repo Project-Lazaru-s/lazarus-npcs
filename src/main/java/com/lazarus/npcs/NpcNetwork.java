@@ -17,7 +17,7 @@ import java.util.function.Supplier;
 
 final class NpcNetwork {
     private static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
-            new ResourceLocation(LazarusNpcs.ID, "ui"), () -> "5", "5"::equals, "5"::equals);
+            new ResourceLocation(LazarusNpcs.ID, "ui"), () -> "9", "9"::equals, "9"::equals);
     /** Longest JSON text component sent for dialogue lines and labels. */
     static final int MAX_COMPONENT_JSON = 2_048;
 
@@ -32,6 +32,32 @@ final class NpcNetwork {
                 Optional.of(NetworkDirection.PLAY_TO_CLIENT));
         CHANNEL.registerMessage(3, DialogueChoice.class, DialogueChoice::encode, DialogueChoice::decode, DialogueChoice::handle,
                 Optional.of(NetworkDirection.PLAY_TO_SERVER));
+        CHANNEL.registerMessage(4, Skin.class, Skin::encode, Skin::decode, Skin::handle,
+                Optional.of(NetworkDirection.PLAY_TO_CLIENT));
+    }
+
+    /** To one player, or to everyone tracking the NPC when player is null. */
+    static void sendSkin(LivingEntity npc, String key, ServerPlayer player) {
+        Skin skin = new Skin(npc.getId(), key);
+        if (player != null) CHANNEL.send(net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> player), skin);
+        else CHANNEL.send(net.minecraftforge.network.PacketDistributor.TRACKING_ENTITY.with(() -> npc), skin);
+    }
+
+    /** Server to client: profession skin key ("rovers_guard"), empty to restore the original texture. */
+    record Skin(int entity, String key) {
+        static void encode(Skin skin, FriendlyByteBuf buf) {
+            buf.writeVarInt(skin.entity);
+            buf.writeUtf(skin.key, 48);
+        }
+
+        static Skin decode(FriendlyByteBuf buf) {
+            return new Skin(buf.readVarInt(), buf.readUtf(48));
+        }
+
+        static void handle(Skin skin, Supplier<NetworkEvent.Context> context) {
+            context.get().enqueueWork(() -> ProfessionSkins.received(skin.entity, skin.key));
+            context.get().setPacketHandled(true);
+        }
     }
 
     static void send(String action, UUID npc) { CHANNEL.sendToServer(new Action(action, npc)); }
@@ -70,6 +96,8 @@ final class NpcNetwork {
         View view = new View(page, npc == null ? new UUID(0, 0) : npc.getUUID(),
                 npc == null ? "" : encounter ? HumanEncounters.label(kind) : NpcIdentity.name(npc),
                 npc == null ? "" : encounter ? kind : NpcIdentity.role(npc),
+                npc == null || encounter ? "" : NpcProfessions.get(npc),
+                npc != null && NpcProfessions.base(npc) != null,
                 npc == null ? "" : encounter ? "independent" : NpcIdentity.faction(npc),
                 npc == null ? NpcTasks.summary(player) : encounter ? "" : NpcTasks.preview(player, npc),
                 npc == null ? NpcTasks.location(player) : "",
@@ -119,6 +147,11 @@ final class NpcNetwork {
                         openNpc(player, npc);
                     }
                     case "task" -> {
+                        if (NpcProfessions.base(npc) != null && !"leader".equals(NpcProfessions.get(npc))) return;
+                        if (NpcProfessions.base(npc) != null) {
+                            NpcDialogues.open(player, npc, com.lazarus.npcs.api.dialogue.DialogueTrigger.INTERACT, null);
+                            return;
+                        }
                         NpcTasks.interact(player, npc, NpcIdentity.role(npc));
                         openNpc(player, npc);
                     }
@@ -135,7 +168,7 @@ final class NpcNetwork {
         }
     }
 
-    record View(String page, UUID npc, String name, String role, String faction,
+    record View(String page, UUID npc, String name, String role, String profession, boolean baseMember, String faction,
                 String task, String taskLocation, String service, String contract, String stories, String encounter,
                 int[] reputation) {
         static void encode(View view, FriendlyByteBuf buf) {
@@ -143,6 +176,8 @@ final class NpcNetwork {
             buf.writeUUID(view.npc);
             buf.writeUtf(view.name, 64);
             buf.writeUtf(view.role, 16);
+            buf.writeUtf(view.profession, 32);
+            buf.writeBoolean(view.baseMember);
             buf.writeUtf(view.faction, 16);
             buf.writeUtf(view.task, 400);
             buf.writeUtf(view.taskLocation, 200);
@@ -157,6 +192,8 @@ final class NpcNetwork {
             UUID npc = buf.readUUID();
             String name = buf.readUtf(64);
             String role = buf.readUtf(16);
+            String profession = buf.readUtf(32);
+            boolean baseMember = buf.readBoolean();
             String faction = buf.readUtf(16);
             String task = buf.readUtf(400);
             String taskLocation = buf.readUtf(200);
@@ -166,7 +203,7 @@ final class NpcNetwork {
             String encounter = buf.readUtf(1000);
             int[] reputation = new int[NpcIdentity.FACTIONS.length];
             for (int i = 0; i < reputation.length; i++) reputation[i] = buf.readVarInt();
-            return new View(page, npc, name, role, faction, task, taskLocation, service, contract, stories, encounter, reputation);
+            return new View(page, npc, name, role, profession, baseMember, faction, task, taskLocation, service, contract, stories, encounter, reputation);
         }
         static void handle(View view, Supplier<NetworkEvent.Context> context) {
             context.get().enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT,

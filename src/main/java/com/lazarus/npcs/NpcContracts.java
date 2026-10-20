@@ -176,6 +176,7 @@ final class NpcContracts {
     // ---- Hiring
 
     static boolean canGuard(LivingEntity npc) {
+        if (NpcProfessions.base(npc) != null) return false;
         String role = NpcIdentity.role(npc);
         return "military".equals(role) || "survivor".equals(role) && "wardens".equals(NpcIdentity.faction(npc));
     }

@@ -31,7 +31,8 @@ final class NpcReputation {
             for (int i = 0; i < before.length; i++) {
                 String name = NpcIdentity.FACTIONS[i];
                 int score = before[i] = data.getInt(name);
-                if (score < 0) data.putInt(name, (int) Math.min(0L, score + days * 5L));
+                int political = data.getInt("Political_" + name);
+                data.putInt(name, recover(score, political, days));
             }
             data.putLong("LastRecoveryTick", last + days * RECOVERY_TICKS);
             player.getPersistentData().put(DATA_KEY, data);
@@ -55,21 +56,64 @@ final class NpcReputation {
 
     /** {@code reason} identifies API callers in the ReputationChanged event; null for Lazarus NPCs' own rules. */
     static int adjust(ServerPlayer player, String faction, int amount, net.minecraft.resources.ResourceLocation reason) {
+        return adjust(player, faction, amount, reason, false);
+    }
+
+    static int adjustPolitical(ServerPlayer player, String faction, int amount,
+                               net.minecraft.resources.ResourceLocation reason) {
+        return adjust(player, faction, amount, reason, true);
+    }
+
+    private static int adjust(ServerPlayer player, String faction, int amount,
+                              net.minecraft.resources.ResourceLocation reason, boolean political) {
         if ("independent".equals(faction)) return 0;
         int current = get(player, faction);
         int updated = Math.max(-100, Math.min(100, current + amount));
         CompoundTag data = player.getPersistentData().getCompound(DATA_KEY);
         data.putInt(faction, updated);
+        java.util.Map<String, int[]> rivalChanges = new java.util.LinkedHashMap<>();
+        var definition = com.lazarus.npcs.api.NpcFactions.get(faction);
+        if (political && definition != null && !definition.rivals().isEmpty() && updated != current) {
+            data.putInt("Political_" + faction, clamp(data.getInt("Political_" + faction) + updated - current));
+            for (String rival : definition.rivals()) {
+                if (com.lazarus.npcs.api.NpcFactions.get(rival) == null) continue;
+                String carryKey = "RivalCarry_" + faction + "_" + rival;
+                // Existing two-faction worlds stored the carry without a rival suffix.
+                if (!data.contains(carryKey) && data.contains("RivalCarry_" + faction))
+                    data.putInt(carryKey, data.getInt("RivalCarry_" + faction));
+                int carry = data.getInt(carryKey) + (updated - current) * NpcConfig.RIVAL_REPUTATION_PERCENT.get();
+                int rivalDelta = rivalDelta(carry);
+                data.putInt(carryKey, carry % 100);
+                int before = data.getInt(rival);
+                int after = clamp(before + rivalDelta);
+                data.putInt(rival, after);
+                data.putInt("Political_" + rival, clamp(data.getInt("Political_" + rival) + after - before));
+                rivalChanges.put(rival, new int[] {before, after});
+            }
+        }
         player.getPersistentData().put(DATA_KEY, data);
         NpcHostility.standingChanged(player, faction, current, updated);
+        rivalChanges.forEach((rival, change) -> {
+            if (change[0] != change[1]) NpcHostility.standingChanged(player, rival, change[0], change[1]);
+        });
         if (updated != current)
             ApiBackend.post(new com.lazarus.npcs.api.event.NpcApiEvents.ReputationChanged(player, faction, current, updated, reason));
+        rivalChanges.forEach((rival, change) -> {
+            if (change[0] != change[1]) ApiBackend.post(new com.lazarus.npcs.api.event.NpcApiEvents.ReputationChanged(
+                    player, rival, change[0], change[1], reason));
+        });
         return updated;
     }
 
-    static void taskRivalry(ServerPlayer player, String faction) {
-        if ("rovers".equals(faction)) adjust(player, "wardens", -1);
-        if ("wardens".equals(faction)) adjust(player, "rovers", -1);
+    static int rivalDelta(int carry) { return -(carry / 100); }
+
+    private static int clamp(int value) { return Math.max(-100, Math.min(100, value)); }
+
+    static int recover(int score, int political, long days) {
+        int recoverable = score - political;
+        if (recoverable >= 0) return score;
+        return (int) Math.max(-100L, Math.min(100L,
+                political + Math.min(0L, recoverable + days * 5L)));
     }
 
     private static String friendlyFaction(LivingEntity npc) {
@@ -105,6 +149,13 @@ final class NpcReputation {
     /** Operator command support: sets a standing directly, with the usual enemy messages. */
     static void set(ServerPlayer player, String faction, int value) {
         adjust(player, faction, Math.max(-100, Math.min(100, value)) - get(player, faction));
+        CompoundTag data = player.getPersistentData().getCompound(DATA_KEY);
+        data.remove("Political_" + faction);
+        data.remove("RivalCarry_" + faction);
+        if (com.lazarus.npcs.api.NpcFactions.get(faction) != null)
+            for (String rival : com.lazarus.npcs.api.NpcFactions.get(faction).rivals())
+                data.remove("RivalCarry_" + faction + "_" + rival);
+        player.getPersistentData().put(DATA_KEY, data);
     }
 
     @SubscribeEvent

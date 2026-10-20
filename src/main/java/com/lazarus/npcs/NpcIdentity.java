@@ -3,10 +3,14 @@ package com.lazarus.npcs;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraftforge.registries.ForgeRegistries;
+import com.lazarus.npcs.api.ApiResult;
+import com.lazarus.npcs.api.NpcFactions;
+import net.minecraft.world.entity.Mob;
 
 final class NpcIdentity {
-    static final String[] FACTIONS = {"haven", "rovers", "wardens", "military"};
+    static final String[] FACTIONS = NpcFactions.all().stream().map(NpcFactions.Definition::id).toArray(String[]::new);
     private static final String KEY = "LazarusNpcsIdentity";
+    private static final String FACTION_OVERRIDE = "LazarusNpcsFaction";
     private static final String[] FIRST = {"Alex", "Morgan", "Sam", "Riley", "Jordan", "Casey", "Taylor", "Avery", "Robin", "Drew", "Jamie", "Quinn"};
     private static final String[] LAST = {"Cole", "Reed", "Vega", "Cross", "Shaw", "Vale", "Brooks", "Stone", "Hayes", "Price"};
 
@@ -22,6 +26,8 @@ final class NpcIdentity {
         if (role == null) return null;
         if ("hunter".equals(role)) return "independent";
         if (!"survivor".equals(role)) return "military";
+        String assigned = npc.getPersistentData().getString(FACTION_OVERRIDE);
+        if (NpcFactions.get(assigned) != null) return assigned;
         var path = ForgeRegistries.ENTITY_TYPES.getKey(npc.getType()).getPath();
         int variant;
         try { variant = Integer.parseInt(path.substring("survivor_".length())); }
@@ -30,10 +36,17 @@ final class NpcIdentity {
     }
 
     static String factionForVariant(int variant) {
-        if (variant >= 1 && variant <= 3) return "haven";
-        if (variant <= 6 && variant >= 4) return "rovers";
-        if (variant <= 8 && variant >= 7) return "wardens";
-        return "independent";
+        return NpcFactions.forVariant(variant);
+    }
+
+    static ApiResult assignFaction(Mob npc, String faction) {
+        if (!"survivor".equals(role(npc)) || NpcFactions.get(faction) == null)
+            return ApiResult.fail(ApiResult.Status.INVALID_CONTEXT, "known faction survivor required");
+        if (NpcProfessions.base(npc) != null && !faction.equals(faction(npc)))
+            return ApiResult.fail(ApiResult.Status.INVALID_CONTEXT, "base resident cannot change faction");
+        npc.getPersistentData().putString(FACTION_OVERRIDE, faction);
+        ProfessionSkins.broadcast(npc);
+        return ApiResult.ok("faction assigned");
     }
 
     static String name(LivingEntity npc) {
@@ -52,12 +65,7 @@ final class NpcIdentity {
     }
 
     static String label(String faction) {
-        return switch (faction) {
-            case "haven" -> "Haven";
-            case "rovers" -> "Rovers";
-            case "wardens" -> "Wardens";
-            case "military" -> "Military";
-            default -> "Independent";
-        };
+        NpcFactions.Definition definition = NpcFactions.get(faction);
+        return definition == null ? "Independent" : definition.label();
     }
 }

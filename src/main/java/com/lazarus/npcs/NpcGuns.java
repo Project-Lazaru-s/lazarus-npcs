@@ -29,6 +29,8 @@ import net.minecraftforge.registries.ForgeRegistries;
 
 import java.util.EnumSet;
 import java.util.Map;
+import com.lazarus.npcs.ai.AiFireState;
+import com.lazarus.npcs.ai.CombatMoveGoal;
 
 /**
  * Some NPCs spawn with a TaCZ firearm from their faction's arsenal. The roll happens once per NPC
@@ -94,8 +96,9 @@ final class NpcGuns {
     /** Adds the firing goal to an armed NPC (once per entity instance). */
     static void attach(Mob mob, float spread) {
         if (!armed(mob)) return;
-        for (WrappedGoal goal : mob.goalSelector.getAvailableGoals()) if (goal.getGoal() instanceof GunGoal) return;
-        mob.goalSelector.addGoal(-1, new GunGoal(mob, spread));
+        for (WrappedGoal goal : mob.goalSelector.getAvailableGoals()) if (goal.getGoal() instanceof FireControlGoal) return;
+        mob.goalSelector.addGoal(-1, new FireControlGoal(mob, spread));
+        CombatMoveGoal.attach(mob);
         var followRange = mob.getAttribute(Attributes.FOLLOW_RANGE);
         if (followRange != null && followRange.getBaseValue() < 24) followRange.setBaseValue(24);
     }
@@ -106,17 +109,34 @@ final class NpcGuns {
         String gun = random.nextFloat() < arsenal.chance() ? pick(arsenal.guns(), random.nextInt(1 << 16)) : "none";
         mob.getPersistentData().putString(KEY, gun);
         if ("none".equals(gun)) return;
+        equip(mob, gun);
+    }
+
+    static boolean armScenario(Mob mob) {
+        if (armed(mob)) return true;
+        String faction = arsenal(mob);
+        Arsenal a = ARSENALS.get(faction);
+        if (a == null) return false;
+        String gun = pick(a.guns(), mob.getRandom().nextInt(1 << 16));
+        if (!equip(mob, gun)) return false;
+        mob.getPersistentData().putString(KEY, gun);
+        attach(mob, a.spread());
+        return true;
+    }
+
+    private static boolean equip(Mob mob, String gun) {
         ResourceLocation id = new ResourceLocation("tacz", gun);
         var index = TimelessAPI.getCommonGunIndex(id);
         if (index.isEmpty()) {
             LazarusNpcs.LOGGER.warn("NPC arsenal gun {} is not in the loaded gun packs; NPC stays unarmed", id);
             mob.getPersistentData().putString(KEY, "none");
-            return;
+            return false;
         }
         ItemStack stack = GunItemBuilder.create().setId(id).setAmmoCount(magazine(index.get()))
                 .setAmmoInBarrel(true).build();
         mob.setItemSlot(EquipmentSlot.MAINHAND, stack);
         mob.setDropChance(EquipmentSlot.MAINHAND, DROP_CHANCE);
+        return true;
     }
 
     private static int magazine(CommonGunIndex index) { return Math.max(1, index.getGunData().getAmmoAmount()); }
@@ -171,23 +191,23 @@ final class NpcGuns {
         return "hunter".equals(role) ? "hunter".equals(victimRole) : NpcIdentity.faction(shooter).equals(NpcIdentity.faction(victim));
     }
 
-    /** Stands and fires in short, inaccurate bursts at a visible target; melee takes over up close. */
-    static final class GunGoal extends Goal {
+    /** Aims and fires without claiming MOVE, leaving navigation to the active movement goal. */
+    static final class FireControlGoal extends Goal {
         private final Mob mob;
         private final float spread;
         private int burst, pause, seen;
 
-        GunGoal(Mob mob, float spread) {
+        FireControlGoal(Mob mob, float spread) {
             this.mob = mob;
             this.spread = spread;
-            setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.LOOK));
+            setFlags(EnumSet.of(Goal.Flag.LOOK));
         }
 
         private boolean ready() {
             LivingEntity target = mob.getTarget();
             if (target == null || !target.isAlive() || !armed(mob) || HumanSurrender.surrendered(mob)) return false;
             double distance = mob.distanceTo(target);
-            return distance > 3.5 && distance <= range(mob.getMainHandItem());
+            return distance > 1.5 && distance <= range(mob.getMainHandItem());
         }
 
         @Override public boolean canUse() { return ready() && mob.getSensing().hasLineOfSight(mob.getTarget()); }
@@ -212,7 +232,6 @@ final class NpcGuns {
         @Override
         public void stop() {
             IGunOperator.fromLivingEntity(mob).aim(false);
-            mob.getNavigation().stop();
         }
 
         @Override public boolean requiresUpdateEveryTick() { return true; }
@@ -221,7 +240,6 @@ final class NpcGuns {
         public void tick() {
             LivingEntity target = mob.getTarget();
             if (target == null) return;
-            mob.getNavigation().stop();
             mob.getLookControl().setLookAt(target, 30, 30);
             if (pause > 0 || seen > 0) {
                 pause--;
@@ -231,7 +249,12 @@ final class NpcGuns {
             ItemStack stack = mob.getMainHandItem();
             Vec3 from = mob.getEyePosition(), to = target.getEyePosition().subtract(0, 0.35, 0);
             double dx = to.x - from.x, dy = to.y - from.y, dz = to.z - from.z;
-            float error = spread * (1 + (float) mob.distanceTo(target) / 32f);
+            // Gaussian error in degrees: about 1 block of spread at 20 blocks for a 3-degree arsenal.
+            float error = spread * 0.5f * (1 + (float) mob.distanceTo(target) / 40f)
+                    * (mob.getDeltaMovement().horizontalDistanceSqr() > 0.0025 ? 1.3f : 1f);
+            // Lead a moving target by the time the bullet needs to arrive.
+            to = to.add(target.getDeltaMovement().multiply(1, 0, 1).scale(mob.distanceTo(target) / bulletSpeed(stack)));
+            dx = to.x - from.x; dy = to.y - from.y; dz = to.z - from.z;
             float yaw = (float) (Mth.atan2(dz, dx) * Mth.RAD_TO_DEG) - 90f + (float) mob.getRandom().nextGaussian() * error;
             float pitch = (float) -(Mth.atan2(dy, Math.sqrt(dx * dx + dz * dz)) * Mth.RAD_TO_DEG)
                     + (float) mob.getRandom().nextGaussian() * error;
@@ -239,13 +262,21 @@ final class NpcGuns {
             switch (result) {
                 case SUCCESS -> {
                     if (burst <= 0) burst = automatic(stack) ? 3 + mob.getRandom().nextInt(3) : 1 + mob.getRandom().nextInt(2);
-                    if (--burst <= 0) pause = 20 + mob.getRandom().nextInt(25);
+                    if (--burst <= 0) { pause = 20 + mob.getRandom().nextInt(25); AiFireState.burst(mob); }
                 }
                 case NO_AMMO -> reload(stack);
                 case NOT_DRAW -> operator.draw(mob::getMainHandItem);
                 case NEED_BOLT -> operator.bolt();
                 default -> { }
             }
+        }
+
+        /** Bullet speed in blocks per tick (gun data is per second); used only to lead moving targets. */
+        private static double bulletSpeed(ItemStack stack) {
+            IGun gun = IGun.getIGunOrNull(stack);
+            float perSecond = gun == null ? 0 : TimelessAPI.getCommonGunIndex(gun.getGunId(stack))
+                    .map(index -> index.getGunData().getBulletData().getSpeed()).orElse(0f);
+            return Math.max(2, perSecond / 20.0);
         }
 
         private boolean automatic(ItemStack stack) {
@@ -260,6 +291,7 @@ final class NpcGuns {
             TimelessAPI.getCommonGunIndex(gun.getGunId(stack)).ifPresent(index -> gun.setCurrentAmmoCount(stack, magazine(index)));
             gun.setBulletInBarrel(stack, true);
             pause = 50;
+            AiFireState.reload(mob, mob.level().getGameTime() + pause);
         }
     }
 }

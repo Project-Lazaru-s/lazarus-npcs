@@ -5,6 +5,8 @@ import com.lazarus.npcs.api.ScenarioAssignment;
 import com.lazarus.npcs.api.ScenarioOrder;
 import com.lazarus.npcs.api.event.NpcApiEvents;
 import com.lazarus.npcs.api.event.NpcApiEvents.ScenarioEnded.Reason;
+import com.lazarus.npcs.ai.Budget;
+import com.lazarus.npcs.ai.TravelGoal;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.GlobalPos;
 import net.minecraft.core.registries.Registries;
@@ -32,6 +34,7 @@ import net.minecraftforge.fml.common.Mod;
 import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.Optional;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -42,6 +45,7 @@ import java.util.UUID;
 @Mod.EventBusSubscriber(modid = LazarusNpcs.ID)
 final class NpcScenarios {
     static final String KEY = "LazarusNpcsScenario";
+    private static final String PATROL = "LazarusNpcsPatrol";
 
     private NpcScenarios() {}
 
@@ -98,7 +102,11 @@ final class NpcScenarios {
         boolean same = existing.filter(old -> old.owner().equals(a.owner()) && old.encounterId().equals(a.encounterId())).isPresent();
         if (existing.isPresent() && !same && existing.get().priority() >= a.priority())
             return ApiResult.fail(ApiResult.Status.BUSY, "NPC already has an order from " + existing.get().owner());
-        if (existing.isPresent() && !same) ApiBackend.post(new NpcApiEvents.ScenarioEnded(npc, existing.get(), Reason.REPLACED));
+        if (existing.isPresent() && !same) {
+            npc.getPersistentData().remove(PATROL);
+            TravelGoal.clear(npc);
+            ApiBackend.post(new NpcApiEvents.ScenarioEnded(npc, existing.get(), Reason.REPLACED));
+        }
         npc.getPersistentData().put(KEY, write(a, npc.level().getGameTime() + a.durationTicks()));
         attach(npc);
         npc.getNavigation().stop();
@@ -126,9 +134,58 @@ final class NpcScenarios {
         return true;
     }
 
+    static ApiResult setPatrolRoute(Mob npc, ResourceLocation owner, UUID encounterId, List<BlockPos> points) {
+        Optional<ScenarioAssignment> active = current(npc);
+        if (active.isEmpty() || !active.get().owner().equals(owner) || !active.get().encounterId().equals(encounterId)
+                || active.get().order() != ScenarioOrder.GUARD_AREA)
+            return ApiResult.fail(ApiResult.Status.INVALID_CONTEXT, "matching guard-area order required");
+        if (points == null || points.size() < 2 || points.size() > 8 || points.stream().anyMatch(p -> p == null
+                || p.distSqr(active.get().anchor().pos()) > active.get().radius() * active.get().radius()))
+            return ApiResult.fail(ApiResult.Status.LIMIT, "2-8 points inside the guard radius required");
+        CompoundTag route = new CompoundTag();
+        route.putString("Owner", owner.toString());
+        route.putUUID("Encounter", encounterId);
+        route.putLongArray("Points", points.stream().mapToLong(BlockPos::asLong).toArray());
+        route.putInt("Index", 0);
+        npc.getPersistentData().put(PATROL, route);
+        return ApiResult.ok("patrol route assigned");
+    }
+
+    static ApiResult setTravelRoute(Mob npc, ResourceLocation owner, UUID encounterId, List<BlockPos> points) {
+        Optional<ScenarioAssignment> active = current(npc);
+        if (active.isEmpty() || !active.get().owner().equals(owner) || !active.get().encounterId().equals(encounterId)
+                || active.get().order() != ScenarioOrder.TRAVEL)
+            return ApiResult.fail(ApiResult.Status.INVALID_CONTEXT, "matching travel order required");
+        if (points == null || points.size() < 4 || points.size() > 8 || points.stream().anyMatch(p -> p == null
+                || !npc.level().isLoaded(p) || Math.abs(p.getY() - npc.getBlockY()) > 16))
+            return ApiResult.fail(ApiResult.Status.LIMIT, "4-8 loaded route points at reachable height required");
+        TravelGoal.route(npc, owner, encounterId, points);
+        return ApiResult.ok("travel route assigned");
+    }
+
+    private static CompoundTag patrol(Mob npc, ScenarioAssignment order) {
+        CompoundTag route = npc.getPersistentData().getCompound(PATROL);
+        return route.getString("Owner").equals(order.owner().toString()) && route.hasUUID("Encounter")
+                && route.getUUID("Encounter").equals(order.encounterId()) ? route : new CompoundTag();
+    }
+
+    private static BlockPos patrolPoint(Mob mob, CompoundTag route, long packed) {
+        BlockPos point = BlockPos.of(packed);
+        BlockPos varied = point.offset(route.getInt("OffsetX"), 0, route.getInt("OffsetZ"));
+        if (varied.equals(point) || !mob.level().getBlockState(varied).getCollisionShape(mob.level(), varied).isEmpty()
+                || !mob.level().getBlockState(varied.above()).getCollisionShape(mob.level(), varied.above()).isEmpty()
+                || !mob.level().getBlockState(varied.below()).isCollisionShapeFullBlock(mob.level(), varied.below())
+                || NpcHazards.pathType(mob.level(), varied, mob,
+                        net.minecraft.world.level.pathfinder.BlockPathTypes.WALKABLE)
+                        != net.minecraft.world.level.pathfinder.BlockPathTypes.WALKABLE) return point;
+        return varied;
+    }
+
     private static void end(LivingEntity npc, Reason reason) {
         CompoundTag tag = npc.getPersistentData().getCompound(KEY);
         npc.getPersistentData().remove(KEY);
+        npc.getPersistentData().remove(PATROL);
+        if (npc instanceof Mob mob) TravelGoal.clear(mob);
         if (npc instanceof Mob mob) mob.getNavigation().stop();
         try {
             ApiBackend.post(new NpcApiEvents.ScenarioEnded(npc, read(tag), reason));
@@ -156,6 +213,7 @@ final class NpcScenarios {
     // ---- Lifecycle
 
     private static void attach(Mob mob) {
+        TravelGoal.attach(mob);
         for (WrappedGoal goal : mob.goalSelector.getAvailableGoals()) if (goal.getGoal() instanceof ScenarioGoal) return;
         mob.goalSelector.addGoal(0, new ScenarioGoal(mob));
     }
@@ -189,6 +247,7 @@ final class NpcScenarios {
             return;
         }
         if (a.order() == ScenarioOrder.WAIT || a.order() == ScenarioOrder.RETREAT || a.order() == ScenarioOrder.FOLLOW_PLAYER) return;
+        if (a.order() == ScenarioOrder.TRAVEL) return;
         double reach = a.order() == ScenarioOrder.GUARD_AREA ? a.radius() + 2 : 6;
         mob.level().getEntitiesOfClass(LivingEntity.class, new AABB(center, center).inflate(reach, 6, reach),
                         e -> e.isAlive() && e != mob && NpcContracts.isThreat(e) && !NpcGuns.sameSide(mob, e)
@@ -198,6 +257,11 @@ final class NpcScenarios {
 
     /** The point an order revolves around: the anchor, or the followed/defended entity when it is loaded. */
     static Vec3 center(Mob mob, ScenarioAssignment a) {
+        // A travelling squad fights around the waypoint it is heading for; the anchor is only where the route began.
+        if (a.order() == ScenarioOrder.TRAVEL) {
+            BlockPos waypoint = TravelGoal.waypoint(mob);
+            return waypoint == null ? mob.position() : Vec3.atBottomCenterOf(waypoint);
+        }
         if (a.target() != null && (a.order() == ScenarioOrder.DEFEND_ALLY || a.order() == ScenarioOrder.FOLLOW_PLAYER)) {
             Entity target = ((ServerLevel) mob.level()).getEntity(a.target());
             return target == null || !target.isAlive() ? null : target.position();
@@ -212,10 +276,21 @@ final class NpcScenarios {
     @SubscribeEvent
     public static void target(net.minecraftforge.event.entity.living.LivingChangeTargetEvent event) {
         if (!(event.getEntity() instanceof Mob mob) || mob.level().isClientSide() || event.getNewTarget() == null
-                || event.getNewTarget() instanceof Player || !mob.getPersistentData().contains(KEY)
-                || event.getNewTarget() == mob.getLastHurtByMob()) return;
+                || event.getNewTarget() instanceof Player || !mob.getPersistentData().contains(KEY)) return;
         Optional<ScenarioAssignment> order = current(mob);
         if (order.isEmpty() || NpcContracts.contract(mob) != null) return;
+        if (NpcGuns.sameSide(mob, event.getNewTarget())) {
+            event.setNewTarget(null);
+            return;
+        }
+        // Mid-fight with a rival faction, a zombie only takes over once it is within striking distance or attacks.
+        LivingEntity current = mob.getTarget();
+        if (current != null && current.isAlive() && rival(mob, current) && !rival(mob, event.getNewTarget())
+                && event.getNewTarget() != mob.getLastHurtByMob() && event.getNewTarget().distanceToSqr(mob) > 16) {
+            event.setCanceled(true);
+            return;
+        }
+        if (event.getNewTarget() == mob.getLastHurtByMob()) return;
         Vec3 center = center(mob, order.get());
         double reach = switch (order.get().order()) {
             case GUARD_AREA -> order.get().radius() + 8;
@@ -223,6 +298,11 @@ final class NpcScenarios {
             default -> 16;
         };
         if (center == null || event.getNewTarget().position().distanceTo(center) > reach) event.setNewTarget(null);
+    }
+
+    static boolean rival(LivingEntity mob, LivingEntity other) {
+        String faction = NpcIdentity.faction(mob), otherFaction = NpcIdentity.faction(other);
+        return faction != null && otherFaction != null && com.lazarus.npcs.api.NpcFactions.rivals(faction, otherFaction);
     }
 
     @SubscribeEvent
@@ -282,6 +362,7 @@ final class NpcScenarios {
         @Override
         public boolean canUse() {
             return active().filter(a -> switch (a.order()) {
+                case TRAVEL -> false;
                 case FOLLOW_PLAYER, DEFEND_ALLY -> {
                     Vec3 center = center(mob, a);
                     yield center != null && mob.position().distanceTo(center) > 5;
@@ -293,6 +374,7 @@ final class NpcScenarios {
         @Override
         public boolean canContinueToUse() {
             return active().filter(a -> switch (a.order()) {
+                case TRAVEL -> false;
                 case FOLLOW_PLAYER, DEFEND_ALLY -> {
                     Vec3 center = center(mob, a);
                     yield center != null && mob.position().distanceTo(center) > 3;
@@ -311,6 +393,28 @@ final class NpcScenarios {
             if (order.isEmpty()) return;
             ScenarioAssignment a = order.get();
             Vec3 center = center(mob, a);
+            CompoundTag route = a.order() == ScenarioOrder.GUARD_AREA ? patrol(mob, a) : new CompoundTag();
+            long[] points = route.getLongArray("Points");
+            if (points.length >= 2) {
+                int index = Math.floorMod(route.getInt("Index"), points.length);
+                center = Vec3.atBottomCenterOf(patrolPoint(mob, route, points[index]));
+                if (mob.position().distanceToSqr(center) <= 9) {
+                    long now = mob.level().getGameTime();
+                    if (route.getLong("WaitUntil") == 0) route.putLong("WaitUntil", now + 40);
+                    else if (now >= route.getLong("WaitUntil")) {
+                        route.putInt("Index", (index + 1) % points.length);
+                        route.putLong("WaitUntil", 0);
+                        route.putInt("OffsetX", mob.getRandom().nextInt(3) - 1);
+                        route.putInt("OffsetZ", mob.getRandom().nextInt(3) - 1);
+                        repath = 0;
+                        center = Vec3.atBottomCenterOf(patrolPoint(mob, route, points[(index + 1) % points.length]));
+                    }
+                    mob.getPersistentData().put(PATROL, route);
+                } else if (route.getLong("WaitUntil") != 0) {
+                    route.putLong("WaitUntil", 0);
+                    mob.getPersistentData().put(PATROL, route);
+                }
+            }
             if (center == null) {
                 mob.getNavigation().stop();
                 return;
@@ -325,6 +429,7 @@ final class NpcScenarios {
                 return;
             }
             if (repath-- > 0) return;
+            if (!Budget.path((ServerLevel) mob.level())) { repath = 1; return; }
             repath = 15;
             double speed = a.order() == ScenarioOrder.RETREAT ? 1.25 : mob.position().distanceTo(center) > 12 ? 1.15 : 1.0;
             HumanTactics.walk(mob, center, speed);

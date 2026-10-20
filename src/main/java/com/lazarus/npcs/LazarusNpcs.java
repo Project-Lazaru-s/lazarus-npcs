@@ -86,6 +86,14 @@ public final class LazarusNpcs {
         }
 
         if (player.isShiftKeyDown()) {
+            if (NpcProfessions.base(npc) != null && !"leader".equals(NpcProfessions.get(npc))) {
+                player.displayClientMessage(Component.literal("Ask the base leader about faction tasks."), true);
+                return;
+            }
+            if (NpcProfessions.base(npc) != null) {
+                NpcDialogues.open(player, npc, com.lazarus.npcs.api.dialogue.DialogueTrigger.INTERACT, null);
+                return;
+            }
             NpcTasks.interact(player, npc, role);
             return;
         }
@@ -95,7 +103,7 @@ public final class LazarusNpcs {
 
     static void trade(ServerPlayer player, LivingEntity npc) {
         String role = NpcIdentity.role(npc);
-        if (role == null || !npc.isAlive() || npc.level() != player.level()
+        if (role == null || !NpcProfessions.canTrade(npc) || !npc.isAlive() || npc.level() != player.level()
                 || npc.distanceToSqr(player) > 64 || NpcReputation.get(player, NpcIdentity.faction(npc)) <= -20) return;
         NpcMerchant merchant = MERCHANTS.computeIfAbsent(npc.getUUID(), ignored -> new NpcMerchant(npc, role));
         Player tradingPlayer = merchant.getTradingPlayer();
@@ -105,7 +113,8 @@ public final class LazarusNpcs {
         }
         merchant.refresh();
         merchant.setTradingPlayer(player);
-        merchant.openTradeScreen(player, Component.literal(NpcIdentity.name(npc) + " / " + NpcIdentity.label(NpcIdentity.faction(npc))));
+        merchant.openTradeScreen(player, Component.literal(NpcIdentity.name(npc) + " / "
+                + (NpcProfessions.label(npc).isEmpty() ? NpcIdentity.label(NpcIdentity.faction(npc)) : NpcProfessions.label(npc))));
     }
 
     static String role(String path) {

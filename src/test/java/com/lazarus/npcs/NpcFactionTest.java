@@ -1,5 +1,6 @@
 package com.lazarus.npcs;
 
+import com.lazarus.npcs.api.NpcFactions;
 import net.minecraft.nbt.CompoundTag;
 
 public final class NpcFactionTest {
@@ -9,6 +10,14 @@ public final class NpcFactionTest {
             assert expected.equals(NpcIdentity.factionForVariant(i)) : "survivor_" + i;
         }
         assert "independent".equals(NpcIdentity.factionForVariant(0));
+        assert NpcFactions.all().stream().map(NpcFactions.Definition::id).toList()
+                .equals(java.util.List.of("haven", "rovers", "wardens", "military"));
+        assert NpcFactions.get("rovers").variant(3) == 4;
+        assert NpcFactions.get("wardens").variant(2) == 7;
+        assert NpcFactions.get("unknown") == null;
+        assert NpcFactions.get("rovers").doctrine().flankShare() == 0.34;
+        assert NpcFactions.get("wardens").doctrine().bounding();
+        assert NpcFactions.get("haven").doctrine().equals(com.lazarus.npcs.api.ai.Doctrine.DEFAULT);
         CompoundTag oldReputation = new CompoundTag();
         oldReputation.putInt("survivor", 17);
         oldReputation.putInt("military", 9);
@@ -19,7 +28,18 @@ public final class NpcFactionTest {
         NpcReputation.migrate(oldReputation);
         assert oldReputation.getInt("rovers") == 4;
         assert oldReputation.getInt("military") == 9;
+        assert FactionRelations.rivals("rovers", "wardens");
+        assert FactionRelations.rivals("wardens", "rovers");
+        assert !FactionRelations.rivals("haven", "rovers");
+        assert !FactionRelations.rivals("military", "wardens");
+        assert !FactionRelations.rivals("rovers", "rovers");
         assert !HumanEncounters.warningExpired(1_000, 1_200);
+        assert NpcReputation.rivalDelta(75) == 0;
+        assert NpcReputation.rivalDelta(100) == -1;
+        assert NpcReputation.rivalDelta(-100) == 1;
+        assert NpcReputation.recover(-20, 0, 2) == -10;
+        assert NpcReputation.recover(-20, -20, 20) == -20 : "political standing persists";
+        assert NpcReputation.recover(-30, -20, 2) == -20 : "only the ordinary penalty recovers";
         assert HumanEncounters.warningExpired(1_000, 7_001);
         assert HumanEncounters.warningExpired(9_000, 100);
         assert "east".equals(NpcServices.direction(10, 0)) && "north".equals(NpcServices.direction(0, -10));

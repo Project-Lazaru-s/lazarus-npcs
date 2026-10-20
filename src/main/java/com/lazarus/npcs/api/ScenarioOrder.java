@@ -11,7 +11,9 @@ public enum ScenarioOrder {
     /** Stand at the anchor. Still defends itself. */
     WAIT,
     /** Move to the anchor (a safe point) and stay there. */
-    RETREAT;
+    RETREAT,
+    /** Follow a finite route with the encounter's other actors. */
+    TRAVEL;
 
     public boolean needsTarget() { return this == DEFEND_ALLY || this == FOLLOW_PLAYER; }
 }

@@ -1,6 +1,9 @@
 package com.lazarus.npcs;
 
-import net.minecraft.core.BlockPos;
+import com.lazarus.npcs.ai.CombatProfiles;
+import com.lazarus.npcs.ai.CombatMoveGoal;
+import com.lazarus.npcs.ai.Squads;
+import com.lazarus.npcs.api.ai.Doctrine;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -19,10 +22,6 @@ import net.minecraft.world.entity.ai.util.DefaultRandomPos;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.item.ProjectileWeaponItem;
-import net.minecraft.world.level.ClipContext;
-import net.minecraft.world.level.Level;
-import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
 import net.minecraftforge.event.entity.living.LivingEvent;
@@ -53,6 +52,8 @@ final class HumanTactics {
 
     private HumanTactics() {}
 
+    static Doctrine doctrine(Mob mob) { return CombatProfiles.doctrine(mob); }
+
     static boolean isHunter(LivingEntity entity) {
         var id = ForgeRegistries.ENTITY_TYPES.getKey(entity.getType());
         return id != null && "apocalypsenow".equals(id.getNamespace()) && "hunter".equals(id.getPath());
@@ -78,6 +79,7 @@ final class HumanTactics {
         if (kind == null && !hunter) return;
         OrderGoal order = new OrderGoal(mob);
         mob.goalSelector.addGoal(0, order);
+        if ("looter".equals(kind) || "soldier".equals(kind)) CombatMoveGoal.attach(mob);
         ORDERS.put(mob, order);
         // The original hunter only targets walkers, runners 34-55/57 and crawlers.
         if (hunter) mob.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(mob, LivingEntity.class,
@@ -256,7 +258,7 @@ final class HumanTactics {
                 order.move(post, 1.0, 100);
                 return;
             }
-            List<Mob> squad = HumanEncounters.group(mob, "soldier", 16);
+            List<Mob> squad = Squads.hostile(mob, HumanEncounters.group(mob, "soldier", 16));
             boolean rallied = false;
             for (Mob ally : squad) {
                 if (ally == mob || ally.getTarget() != null || HumanEncounters.retreating(ally, now)) continue;
@@ -265,7 +267,7 @@ final class HumanTactics {
                 rallied |= ally.getTarget() == player;
             }
             if (rallied) callout(player, "Rogue soldier: \"Contact! On me!\"", now);
-            cover(mob, order, player, squad, now);
+            // CombatMoveGoal owns cover and flanking while this method keeps warning, rally and post limits.
             return;
         }
         if (mob.getTarget() != null) return;
@@ -275,74 +277,6 @@ final class HumanTactics {
 
     private static Vec3 post(CompoundTag root) {
         return new Vec3(root.getDouble("PostX"), root.getDouble("PostY"), root.getDouble("PostZ"));
-    }
-
-    private static void cover(Mob mob, OrderGoal order, ServerPlayer player, List<Mob> squad, long now) {
-        CompoundTag root = HumanEncounters.data(mob);
-        if (now < root.getLong("CoverReady") || mob.distanceToSqr(player) < 36) return;
-        int side = (mob.getUUID().getLeastSignificantBits() & 1) == 0 ? 1 : -1;
-        boolean ranged = ranged(player.getMainHandItem()) || ranged(player.getOffhandItem());
-        Vec3 dest = null;
-        String line = null;
-        if (ranged && mob.hasLineOfSight(player)) {
-            dest = coverPosition(mob, player, side);
-            line = "Rogue soldier: \"Get to cover!\"";
-        }
-        if (dest == null && mob.distanceToSqr(player) > 64
-                && squad.stream().filter(ally -> ally.getTarget() == player).count() >= 2) {
-            Vec3 toPlayer = horizontal(player.position().subtract(mob.position()));
-            dest = player.position().add(-toPlayer.z * side * 5, 0, toPlayer.x * side * 5);
-            line = "Rogue soldier: \"Flank them!\"";
-        }
-        if (dest == null) return;
-        order.move(dest, 1.25, ranged ? 50 : 40);
-        root.putLong("CoverReady", now + (ranged ? 100 : 80));
-        HumanEncounters.putData(mob, root);
-        callout(player, line, now);
-    }
-
-    private static Vec3 coverPosition(Mob mob, ServerPlayer player, int side) {
-        Level level = mob.level();
-        Vec3 eye = player.getEyePosition();
-        Vec3 toPlayer = horizontal(player.position().subtract(mob.position()));
-        Vec3 best = null;
-        double bestScore = Double.MAX_VALUE;
-        for (int radius = 3; radius <= 7; radius += 2) {
-            for (int step = 0; step < 16; step++) {
-                double angle = step * Math.PI / 8;
-                double dx = Math.cos(angle), dz = Math.sin(angle);
-                if (dx * toPlayer.x + dz * toPlayer.z < -0.3) continue;
-                BlockPos pos = standable(level, BlockPos.containing(mob.getX() + dx * radius, mob.getY(), mob.getZ() + dz * radius));
-                if (pos == null) continue;
-                Vec3 feet = Vec3.atBottomCenterOf(pos);
-                Vec3 head = feet.add(0, mob.getEyeHeight(), 0);
-                if (level.clip(new ClipContext(head, eye, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, mob))
-                        .getType() != HitResult.Type.BLOCK) continue;
-                double cross = toPlayer.x * dz - toPlayer.z * dx;
-                double score = feet.distanceToSqr(player.position()) - side * cross * 8;
-                if (score < bestScore) {
-                    bestScore = score;
-                    best = feet;
-                }
-            }
-        }
-        return best;
-    }
-
-    private static BlockPos standable(Level level, BlockPos pos) {
-        for (int dy : new int[]{0, 1, -1}) {
-            BlockPos at = pos.above(dy);
-            if (level.getBlockState(at).getCollisionShape(level, at).isEmpty()
-                    && level.getBlockState(at.above()).getCollisionShape(level, at.above()).isEmpty()
-                    && !level.getBlockState(at.below()).getCollisionShape(level, at.below()).isEmpty()) return at;
-        }
-        return null;
-    }
-
-    private static boolean ranged(ItemStack stack) {
-        if (stack.getItem() instanceof ProjectileWeaponItem) return true;
-        var id = ForgeRegistries.ITEMS.getKey(stack.getItem());
-        return id != null && "tacz".equals(id.getNamespace()) && id.getPath().contains("gun");
     }
 
     private static void callout(ServerPlayer player, String line, long now) {

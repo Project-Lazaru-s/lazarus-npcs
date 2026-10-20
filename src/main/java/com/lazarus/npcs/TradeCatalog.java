@@ -53,8 +53,7 @@ final class TradeCatalog {
                     if (input != null) {
                         Map<String, List<TradeDef>> defaults = GSON.fromJson(
                                 new InputStreamReader(input, StandardCharsets.UTF_8), TYPE);
-                        for (String faction : new String[]{"haven", "rovers", "wardens", "hunter"})
-                            merged.putIfAbsent(faction, defaults.getOrDefault(faction, List.of()));
+                        defaults.forEach(merged::putIfAbsent);
                     }
                 }
                 definitions = merged;
@@ -71,17 +70,19 @@ final class TradeCatalog {
         }
     }
 
-    static CatalogOffers create(String role, String faction, UUID npcId, int rotation) {
+    static CatalogOffers create(String role, String faction, String profession, UUID npcId, int rotation) {
         MerchantOffers offers = new MerchantOffers();
         List<Integer> treatments = new ArrayList<>();
-        List<TradeDef> base = definitions.getOrDefault(role, List.of());
+        String professionKey = faction + "_" + profession;
+        boolean specialized = definitions.containsKey(professionKey);
+        List<TradeDef> base = definitions.getOrDefault(specialized ? professionKey : role, List.of());
         List<TradeDef> selected = new ArrayList<>(base.subList(0, Math.min(2, base.size())));
         List<TradeDef> rotating = new ArrayList<>(base.subList(Math.min(2, base.size()), base.size()));
         long seed = npcId.getMostSignificantBits() ^ npcId.getLeastSignificantBits()
                 ^ (rotation * 0x9E3779B97F4A7C15L);
         Collections.shuffle(rotating, new Random(seed));
         int limit = "military".equals(role) ? 9 : 7;
-        if ("survivor".equals(role)) {
+        if ("survivor".equals(role) && !specialized) {
             List<TradeDef> factionOffers = new ArrayList<>(definitions.getOrDefault(faction, List.of()));
             Collections.shuffle(factionOffers, new Random(seed ^ 0x5DEECE66DL));
             selected.addAll(factionOffers.subList(0, Math.min(2, factionOffers.size())));

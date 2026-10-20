@@ -66,6 +66,10 @@ public final class RescueIntegrationGameTests {
     public static void rescueFromPleaToSafety(GameTestHelper h) {
         UUID encounter = UUID.randomUUID();
         Mob survivor = place(h, encounter);
+        // This test covers the plea and the escort; a walker that rolled a spot inside the flare scenery would keep
+        // the survivor targeting it forever, so the encounter's infected are cleared first.
+        h.getLevel().getEntitiesOfClass(Mob.class, survivor.getBoundingBox().inflate(32),
+                mob -> mob != survivor && mob.getTags().contains("lazarusevents:" + encounter)).forEach(Mob::discard);
         h.assertTrue(NpcApi.assignment(survivor).map(a -> a.order() == ScenarioOrder.WAIT
                 && a.owner().toString().equals("lazarusevents:rescue")).orElse(false), "wounded survivor waits");
         h.assertTrue(survivor.getHealth() < survivor.getMaxHealth() * 0.5f, "wounded");
@@ -83,7 +87,7 @@ public final class RescueIntegrationGameTests {
         // Keep the safe point on the test platform (the real one is 40 blocks back along the player's route).
         CompoundTag data = player.getPersistentData().getCompound(EncounterTasks.KEY);
         h.assertTrue(data.getCompound("Open").contains("Dest"), "safe point chosen by Events");
-        data.getCompound("Open").putLong("Dest", h.absolutePos(new BlockPos(26, 2, 16)).asLong());
+        data.getCompound("Open").putLong("Dest", h.absolutePos(new BlockPos(20, 2, 16)).asLong()); // near the centre: the arena's east chunk may not tick
 
         player.getInventory().add(item("apocalypsenow:bandage", 2));
         h.assertTrue(NpcDialogues.open(player, survivor, com.lazarus.npcs.api.dialogue.DialogueTrigger.INTERACT, null), "hand-in shown");
@@ -91,12 +95,13 @@ public final class RescueIntegrationGameTests {
         h.assertTrue(NpcApi.assignment(survivor).map(a -> a.order() == ScenarioOrder.FOLLOW_PLAYER).orElse(false),
                 "Events switched the survivor to follow after the bandages");
 
-        var safe = h.absoluteVec(new net.minecraft.world.phys.Vec3(26.5, 2, 16.5));
+        var safe = h.absoluteVec(new net.minecraft.world.phys.Vec3(20.5, 2, 16.5));
         player.teleportTo(safe.x, safe.y, safe.z);
         h.succeedWhen(() -> {
             h.assertTrue(NpcApi.encounterTask(player).map(t -> t.state() == TaskState.COMPLETED).orElse(false),
                     "escort completes, survivor at " + survivor.position() + " target " + survivor.getTarget()
-                            + " order " + NpcApi.assignment(survivor).map(a -> a.order()).orElse(null) + " alive " + survivor.isAlive());
+                            + " order " + NpcApi.assignment(survivor).map(a -> a.order()).orElse(null) + " alive " + survivor.isAlive()
+                            + " journal " + EncounterTasks.journal(player).replace('\n', '|'));
             h.assertTrue(NpcReputation.get(player, faction) == before + 5, "Events paid +5 " + faction);
             h.assertTrue(NpcApi.assignment(survivor).map(a -> a.order() == ScenarioOrder.WAIT).orElse(false), "rests at the safe point");
             h.getLevel().getServer().getPlayerList().remove(player);

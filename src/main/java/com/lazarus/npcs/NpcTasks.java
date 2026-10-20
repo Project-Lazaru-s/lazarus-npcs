@@ -50,14 +50,14 @@ final class NpcTasks {
                 save(player, data);
                 return;
             }
-            giveReward(player, kind);
             int gained = reputationReward(kind, faction);
             String credited = active.contains("Faction") ? active.getString("Faction") : faction;
-            int reputation = NpcReputation.adjust(player, credited, gained);
-            NpcReputation.taskRivalry(player, credited);
             data.remove(ACTIVE);
             data.putLong("Completed_" + faction, now);
-            save(player, data);
+            save(player, data); // Record completion before paying; duplicate interactions cannot pay twice.
+            giveReward(player, kind);
+            int reputation = NpcReputation.adjustPolitical(player, credited, gained,
+                    new ResourceLocation(LazarusNpcs.ID, "task_" + kind));
             say(player, "Task complete. Received " + rewardDescription(kind) + "."
                     + (gained == 0 ? "" : " Reputation +" + gained + " (now " + reputation + ")."));
             NpcDialogue.action(player, npc, "complete");

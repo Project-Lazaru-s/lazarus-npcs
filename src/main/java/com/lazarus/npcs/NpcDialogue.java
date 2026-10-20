@@ -132,13 +132,8 @@ final class NpcDialogue {
     }
 
     private static void send(ServerPlayer player, LivingEntity npc, String line) {
-        int color = switch (NpcIdentity.faction(npc)) {
-            case "haven" -> 0x8FCB91;
-            case "rovers" -> 0xE0AE67;
-            case "wardens" -> 0x84B5D6;
-            case "military" -> 0xB5C48B;
-            default -> 0xD8C6AA;
-        };
+        var definition = com.lazarus.npcs.api.NpcFactions.get(NpcIdentity.faction(npc));
+        int color = definition == null ? 0xD8C6AA : definition.color();
         player.sendSystemMessage(Component.literal(NpcIdentity.name(npc))
                 .withStyle(style -> style.withColor(color).withBold(true))
                 .append(Component.literal(": " + line).withStyle(style -> style.withColor(0xEEE7DB))));

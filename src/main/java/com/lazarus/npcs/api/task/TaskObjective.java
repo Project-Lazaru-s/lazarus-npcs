@@ -28,4 +28,7 @@ public interface TaskObjective {
      * nothing) when the player cannot hand in.
      */
     default boolean deliver(TaskContext context) { return false; }
+
+    /** Final check and optional consumption before paying a READY task at its giver. Defaults to no extra check. */
+    default boolean turnIn(TaskContext context) { return true; }
 }

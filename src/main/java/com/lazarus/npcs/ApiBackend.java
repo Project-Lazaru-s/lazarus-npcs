@@ -3,12 +3,16 @@ package com.lazarus.npcs;
 import com.lazarus.npcs.api.ApiResult;
 import com.lazarus.npcs.api.NpcApi;
 import com.lazarus.npcs.api.NpcIdentityView;
+import com.lazarus.npcs.api.NpcFactions;
 import com.lazarus.npcs.api.ScenarioAssignment;
+import com.lazarus.npcs.api.ai.Routine;
+import com.lazarus.npcs.ai.RoutineGoal;
 import com.lazarus.npcs.api.dialogue.DialogueDefinition;
 import com.lazarus.npcs.api.dialogue.DialogueTrigger;
 import com.lazarus.npcs.api.task.TaskDefinition;
 import com.lazarus.npcs.api.task.TaskView;
 import net.minecraft.core.GlobalPos;
+import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -19,6 +23,7 @@ import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.eventbus.api.Event;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -65,6 +70,45 @@ final class ApiBackend implements NpcApi.Backend {
     }
 
     @Override
+    public ApiResult assignFaction(Mob npc, String faction) {
+        return serverThread(npc) ? NpcIdentity.assignFaction(npc, faction) : wrongThread();
+    }
+
+    @Override
+    public Optional<ResourceLocation> profession(LivingEntity npc) {
+        if (!serverThread(npc)) return Optional.empty();
+        String id = NpcProfessions.get(npc);
+        return id.isEmpty() ? Optional.empty() : Optional.of(new ResourceLocation(LazarusNpcs.ID, id));
+    }
+
+    @Override
+    public ApiResult assignProfession(Mob npc, ResourceLocation profession, UUID baseId) {
+        return serverThread(npc) ? NpcProfessions.assign(npc, profession, baseId) : wrongThread();
+    }
+
+    @Override
+    public ApiResult setPatrolRoute(Mob npc, ResourceLocation owner, UUID encounterId, List<BlockPos> waypoints) {
+        return serverThread(npc) ? NpcScenarios.setPatrolRoute(npc, owner, encounterId, waypoints) : wrongThread();
+    }
+
+    @Override
+    public ApiResult setTravelRoute(Mob npc, ResourceLocation owner, UUID encounterId, List<BlockPos> waypoints) {
+        return serverThread(npc) ? NpcScenarios.setTravelRoute(npc, owner, encounterId, waypoints) : wrongThread();
+    }
+
+    @Override
+    public ApiResult setRoutine(Mob npc, Routine routine) {
+        if (!serverThread(npc)) return wrongThread();
+        if (!NpcScenarios.supported(npc))
+            return ApiResult.fail(ApiResult.Status.UNSUPPORTED_NPC, "human NPC required");
+        if (routine == null || routine.activities().stream().anyMatch(activity ->
+                !npc.level().isLoaded(activity.at()) || activity.at().distSqr(npc.blockPosition()) > 64 * 64))
+            return ApiResult.fail(ApiResult.Status.INVALID_CONTEXT, "routine points must be loaded and nearby");
+        RoutineGoal.assign(npc, routine);
+        return ApiResult.ok("routine assigned");
+    }
+
+    @Override
     public ApiResult assign(Mob npc, ScenarioAssignment assignment) {
         return serverThread(npc) ? NpcScenarios.assign(npc, assignment) : wrongThread();
     }
@@ -80,12 +124,41 @@ final class ApiBackend implements NpcApi.Backend {
     }
 
     @Override
+    public ApiResult armScenarioActor(Mob npc, ResourceLocation owner, UUID encounterId) {
+        if (!serverThread(npc)) return wrongThread();
+        if (owner == null || encounterId == null || !NpcScenarios.current(npc)
+                .filter(a -> owner.equals(a.owner()) && encounterId.equals(a.encounterId())).isPresent())
+            return ApiResult.fail(ApiResult.Status.INVALID_CONTEXT, "actor is not assigned to this scenario");
+        String faction = NpcIdentity.faction(npc);
+        if (NpcFactions.get(faction) == null || !NpcFactions.get(faction).professions())
+            return ApiResult.fail(ApiResult.Status.UNSUPPORTED_NPC, "professional faction survivor required");
+        return NpcGuns.armScenario(npc) ? ApiResult.ok("scenario actor armed")
+                : ApiResult.fail(ApiResult.Status.INVALID_CONTEXT, "no compatible faction weapon is loaded");
+    }
+
+    @Override
     public int reputation(ServerPlayer player, String faction) {
         return serverThread(player) ? NpcReputation.get(player, faction) : 0;
     }
 
     @Override
     public ApiResult adjustReputation(ServerPlayer player, String faction, int delta, ResourceLocation reason, UUID encounterId) {
+        return adjustReputation(player, faction, delta, reason, encounterId, false);
+    }
+
+    @Override
+    public ApiResult adjustPoliticalReputation(ServerPlayer player, String faction, int delta,
+                                               ResourceLocation reason, UUID actionId) {
+        return adjustReputation(player, faction, delta, reason, actionId, true);
+    }
+
+    @Override
+    public boolean areRivals(String first, String second) {
+        return FactionRelations.rivals(first, second);
+    }
+
+    private ApiResult adjustReputation(ServerPlayer player, String faction, int delta, ResourceLocation reason,
+                                       UUID encounterId, boolean political) {
         if (!serverThread(player)) return wrongThread();
         if ("independent".equals(faction) || !Arrays.asList(NpcIdentity.FACTIONS).contains(faction))
             return ApiResult.fail(ApiResult.Status.INVALID_CONTEXT, "unknown faction " + faction);
@@ -100,7 +173,8 @@ final class ApiBackend implements NpcApi.Backend {
             pruneGrants(grants, player.serverLevel().getGameTime());
             player.getPersistentData().put(GRANTS, grants);
         }
-        int updated = NpcReputation.adjust(player, faction, delta, reason);
+        int updated = political ? NpcReputation.adjustPolitical(player, faction, delta, reason)
+                : NpcReputation.adjust(player, faction, delta, reason);
         LazarusNpcs.LOGGER.info("[api] reputation {} {} {} by {} (encounter {}) -> {}", player.getGameProfile().getName(),
                 faction, delta, reason, encounterId, updated);
         return ApiResult.ok("reputation changed", updated, null);
@@ -136,6 +210,16 @@ final class ApiBackend implements NpcApi.Backend {
         if (!serverThread(player)) return wrongThread();
         return NpcDialogues.open(player, npc, trigger, null) ? ApiResult.ok("dialogue opened")
                 : ApiResult.fail(ApiResult.Status.MISSING_DEFINITION, "no dialogue answers this trigger here");
+    }
+
+    @Override
+    public ApiResult openNpcMenu(ServerPlayer player, LivingEntity npc) {
+        if (!serverThread(player)) return wrongThread();
+        if (npc == null || NpcIdentity.role(npc) == null || !npc.isAlive() || npc.level() != player.level()
+                || npc.distanceToSqr(player) > 64 || NpcReputation.get(player, NpcIdentity.faction(npc)) <= -20)
+            return ApiResult.fail(ApiResult.Status.INVALID_CONTEXT, "NPC menu is unavailable");
+        NpcNetwork.openNpc(player, npc);
+        return ApiResult.ok("NPC menu opened");
     }
 
     @Override

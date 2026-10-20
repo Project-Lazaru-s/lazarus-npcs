@@ -21,7 +21,7 @@ import java.util.OptionalInt;
 final class NpcMerchant implements Merchant {
     private static final String DATA_KEY = "LazarusNpcs";
     private static final long RESTOCK_TICKS = 48_000L;
-    private static final int CATALOG_VERSION = 2;
+    private static final int CATALOG_VERSION = 3;
     private final LivingEntity npc;
     private final String role;
     private MerchantOffers offers;
@@ -36,11 +36,11 @@ final class NpcMerchant implements Merchant {
     void refresh() {
         CompoundTag state = npc.getPersistentData().getCompound(DATA_KEY);
         if (offers == null) {
-            if (state.contains("Offers") && state.getInt("CatalogVersion") >= CATALOG_VERSION) {
+            if (state.contains("Offers") && state.getInt("CatalogVersion") >= 2) {
                 offers = new MerchantOffers(state.getCompound("Offers"));
                 treatments = state.getIntArray("Treatments");
             } else {
-                TradeCatalog.CatalogOffers generated = TradeCatalog.create(role, NpcIdentity.faction(npc),
+                TradeCatalog.CatalogOffers generated = TradeCatalog.create(role, NpcIdentity.faction(npc), NpcProfessions.get(npc),
                         npc.getUUID(), state.getInt("OfferRotation"));
                 offers = generated.offers();
                 treatments = generated.treatments();
@@ -52,11 +52,12 @@ final class NpcMerchant implements Merchant {
         long now = npc.level().getGameTime();
         if (now - state.getLong("RestockedAt") >= RESTOCK_TICKS) {
             int rotation = state.getInt("OfferRotation") + 1;
-            TradeCatalog.CatalogOffers generated = TradeCatalog.create(role, NpcIdentity.faction(npc),
+            TradeCatalog.CatalogOffers generated = TradeCatalog.create(role, NpcIdentity.faction(npc), NpcProfessions.get(npc),
                     npc.getUUID(), rotation);
             offers = generated.offers();
             treatments = generated.treatments();
             state.putInt("OfferRotation", rotation);
+            state.putInt("CatalogVersion", CATALOG_VERSION);
             state.putLong("RestockedAt", now);
             save(state);
         }

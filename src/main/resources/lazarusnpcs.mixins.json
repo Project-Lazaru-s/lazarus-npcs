@@ -4,6 +4,7 @@
   "package": "com.lazarus.npcs.mixin",
   "compatibilityLevel": "JAVA_17",
   "refmap": "lazarusnpcs.refmap.json",
-  "mixins": ["WalkNodeEvaluatorMixin"],
+  "mixins": ["WalkNodeEvaluatorMixin", "LadderNodeMixin", "ModernMayhemPacketThreadMixin"],
+  "client": ["LivingEntityRendererMixin"],
   "injectors": {"defaultRequire": 1}
 }

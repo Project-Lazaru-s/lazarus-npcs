@@ -146,9 +146,11 @@ dependencies {
     testCompileOnly fg.deobf("blank:tacz:1.1.8")
     runtimeOnly fg.deobf("blank:tacz:1.1.8")
     // Lazarus Events (API consumer) and its required Dyairdrop, only for the end-to-end GameTests.
-    runtimeOnly fg.deobf("blank:lazarusevents:0.6.0")
+    runtimeOnly fg.deobf("blank:lazarusevents:0.12.1")
     runtimeOnly fg.deobf("blank:dyairdrop:1.0.0")
     runtimeOnly fg.deobf("blank:geckolib:4.8.4") // Dyairdrop needs it at runtime despite declaring it optional
+    // Modern Mayhem armor for the faction loadouts (GameTests check the pieces resolve; the profile ships the mod).
+    runtimeOnly fg.deobf("blank:modernmayhem:2.0.1")
 
     // Example mod dependency with JEI - using fg.deobf() ensures the dependency is remapped to your development mappings
     // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime

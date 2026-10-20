@@ -87,7 +87,7 @@ final class NpcServices {
         if (nearby.stream().anyMatch(npc -> "survivor".equals(role(npc)))) {
             option(player, "repair", "Survivor repair: 3 iron ingots; restore 25% durability of held item.");
         }
-        if (nearby.stream().anyMatch(npc -> "medic".equals(role(npc)))) {
+        if (nearby.stream().anyMatch(npc -> "medic".equals(role(npc)) || "stabilize".equals(NpcProfessions.baseService(npc)))) {
             option(player, "stabilize", "Medic stabilization: 2 bandages + 1 canned water; heal 4 hearts and clear poison/weakness.");
         }
         if (nearby.stream().anyMatch(npc -> "military".equals(role(npc)))) {
@@ -118,12 +118,18 @@ final class NpcServices {
 
         LivingEntity npc = player.serverLevel().getEntitiesOfClass(LivingEntity.class,
                         player.getBoundingBox().inflate(6.0), entity -> entity.isAlive()
-                                && requiredRole.equals(role(entity)) && entity.distanceToSqr(player) <= 36.0
+                                && (requiredRole.equals(role(entity)) || service.equals(NpcProfessions.baseService(entity)))
+                                && entity.distanceToSqr(player) <= 36.0
                                 && player.hasLineOfSight(entity)
+                                && (NpcProfessions.base(entity) == null || service.equals(NpcProfessions.baseService(entity)))
                                 && (selectedNpc == null || entity.getUUID().equals(selectedNpc)))
                 .stream().min(Comparator.comparingDouble(entity -> entity.distanceToSqr(player))).orElse(null);
         if (npc == null) {
             say(player, "Move within six blocks of a " + requiredRole + " NPC first.");
+            return;
+        }
+        if (NpcProfessions.base(npc) != null && !service.equals(NpcProfessions.baseService(npc))) {
+            say(player, "This base member does not offer that service.");
             return;
         }
         if (NpcReputation.get(player, NpcIdentity.faction(npc)) <= -20) {

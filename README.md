@@ -6,14 +6,14 @@
   <img alt="Minecraft 1.20.1" src="https://img.shields.io/badge/Minecraft-1.20.1-3c8527">
   <img alt="Forge 47.x" src="https://img.shields.io/badge/Forge-47.x-dd7d2b">
   <img alt="Java 17" src="https://img.shields.io/badge/Java-17-b07219">
-  <img alt="Versão 1.6.0" src="https://img.shields.io/badge/vers%C3%A3o-1.6.0-6b5b3e">
+  <img alt="Versão 1.13.1" src="https://img.shields.io/badge/vers%C3%A3o-1.13.1-6b5b3e">
 </p>
 
 # Lazarus NPCs
 
 **Lazarus NPCs** é um mod para Minecraft Forge 1.20.1 criado para o modpack **Project Lazarus**. Ele dá vida às pessoas que restaram no apocalipse: os sobreviventes, militares, caçadores, saqueadores, soldados desertores e canibais do **Apocalypse Now** passam a negociar, pedir ajuda, cobrar pedágio, perseguir, se render e lutar com armas do **TaCZ**.
 
-O mod não cria novas entidades nem altera o JAR do Apocalypse Now. Tudo é feito sobre os NPCs originais, com servidor autoritativo e suporte a multiplayer.
+O mod não cria novas entidades nem altera o JAR do Apocalypse Now. Tudo é feito sobre os NPCs originais, com servidor autoritativo e suporte a multiplayer. Rovers e Wardens com profissão têm skin própria, equipamento por função e opções de interação próprias.
 
 Os NPCs humanos evitam rotas através de `spike_barrier` e `barbed_wire` do Apocalypse Now e tratam os blocos vizinhos como perigosos. Isso vale para patrulha, escolta e combate; os caminhos dos infectados não são alterados.
 
@@ -28,7 +28,10 @@ Os NPCs humanos evitam rotas através de `spike_barrier` e `barbed_wire` do Apoc
 - [Encontros hostis](#encontros-hostis)
 - [Rendição](#rendição)
 - [Armas de fogo](#armas-de-fogo)
+- [Combate tático e rotina](#combate-tático-e-rotina)
+- [Expedições e saque de estruturas](#expedições-e-saque-de-estruturas)
 - [Furtividade (com Lazarus Stealth)](#furtividade-com-lazarus-stealth)
+- [Skins e equipamento por profissão](#skins-e-equipamento-por-profissão)
 - [API para outros mods](#api-para-outros-mods)
 - [Comandos e configuração](#comandos-e-configuração)
 - [Instalação](#instalação)
@@ -49,6 +52,8 @@ Os NPCs humanos evitam rotas através de `spike_barrier` e `barbed_wire` do Apoc
 ---
 
 ## Facções e reputação
+
+As definições comuns de facção agora ficam em `NpcFactions`: nome, cor, variantes e rivalidades. Eventos podem atribuir a facção explicitamente pela API sem depender do número da skin original. O procedimento de expansão e os cuidados com saves estão em [docs/FACTIONS.md](docs/FACTIONS.md).
 
 | Facção | NPCs | Foco |
 |---|---|---|
@@ -166,10 +171,28 @@ Alguns NPCs nascem com uma arma do **TaCZ** do arsenal da sua facção. O sortei
 | Canibais | Nunca | — |
 
 - Lança-foguetes, metralhadoras e rifles .50 ficam de fora.
-- Com linha de tiro livre, o NPC para e atira em rajadas curtas: pistolas e escopetas até 16 blocos, submetralhadoras até 20 e rifles até 28. A pontaria tem erro proposital (saqueadores erram mais; caçadores e militares, menos). A menos de 3,5 blocos ou sem linha de tiro, ele volta ao corpo a corpo.
+- Com linha de tiro livre, o NPC atira em rajadas curtas enquanto pode buscar cobertura ou mudar de posição: pistolas e escopetas até 16 blocos, submetralhadoras até 20 e rifles até 28. A pontaria tem erro proposital (saqueadores erram mais; caçadores e militares, menos) e piora 50% ao se mover. A menos de 3,5 blocos, o disparo cede ao corpo a corpo.
 - Os NPCs recarregam fazendo uma pausa e não carregam munição.
 - Os tiros de NPCs causam **metade do dano** em jogadores, nunca ferem a própria facção ou grupo, e NPCs aliados não acertam jogadores com quem não estão hostis.
 - A arma cai em **12%** das mortes causadas por jogadores, sempre com o **carregador vazio**.
+
+---
+
+## Combate tático e rotina
+
+Saqueadores, soldados desertores e combatentes de facção armados usam a doutrina da sua facção para escolher entre cobertura, avanço alternado, flanco, supressão, recarga protegida e recuo. O objetivo de movimento não altera o alcance, o dano nem a munição da arma. As decisões usam uma busca curta de posições caminháveis e evitam os blocos perigosos marcados para NPCs.
+
+Nas bases de facção, moradores civis alternam entre trabalho, conversa e refeição. Quem possui cama se recolhe à noite; os demais procuram abrigo, enquanto a guarda assume postos defensivos. Quando um morador é atacado ou há um infectado ameaçando outro morador, a base inteira recebe um alerta por 30 segundos: combatentes defendem e civis se abrigam. O Events envia a rotina novamente quando o morador reaparece ou as ordens são renovadas.
+
+---
+
+## Expedições e saque de estruturas
+
+Expedições de facção recebem uma rota finita de quatro a oito pontos. O batedor conduz o grupo, os demais se reagrupam nele, param para observar a cada dois pontos e retomam a viagem após combate. A IA não carrega chunks novos. Se uma horda bloquear o próximo ponto, o batedor tenta um desvio curto.
+
+Sobreviventes e caçadores avulsos, saqueadores e desertores podem vasculhar um baú ou barril de estrutura **ainda fechado**, desde que não estejam sob contrato, em uma base, em combate ou perto de um jogador. Cada busca leva uma ou duas pilhas para uma mochila persistente; o restante fica no contêiner e a mochila cai na morte. Baús comuns do jogador, contêineres já abertos e depósitos de base ficam fora da busca. NPCs pacíficos avulsos procuram cobertura à noite. O comportamento é configurável em `config/lazarusnpcs-common.toml`, seção `scavenging`.
+
+Para medir o custo no mundo de teste, use `/lazarusnpcs debug` após 1.200 ticks de atividade e compare a média `AI instrumented total` com um perfil `/spark` contendo duas bases, uma escaramuça e uma expedição. A média instrumentada soma apenas as rotinas marcadas do Lazarus NPCs; a meta de 2 ms/tick precisa ser confirmada em jogo com o spark.
 
 ---
 
@@ -189,13 +212,31 @@ A percepção usa visão (40 blocos, cone de 140°), luz, postura, cobertura e a
 
 Sem o Lazarus Stealth, os NPCs se comportam exatamente como na 1.0.0.
 
+## Skins e equipamento por profissão
+
+Rovers e Wardens com profissão atribuída (moradores de base e soldados de expedição) usam uma **skin própria para cada profissão de cada facção**: 12 texturas originais em `assets/lazarusnpcs/textures/entity/profession/`, geradas por `tools/skins/generate_profession_skins.py` (prévia em [docs/profession_skins_preview.png](docs/profession_skins_preview.png)). O servidor informa a profissão ao cliente quando o NPC entra no alcance de visão; sobreviventes comuns, sem profissão, mantêm as skins do Apocalypse Now. A faixa no braço esquerdo identifica a facção (ferrugem nos Rovers, azul com divisa branca nos Wardens) e o médico usa braçadeira branca com cruz verde.
+
+Líderes, guardas e soldados de expedição também vestem armaduras de mods:
+
+| | Rovers (equipamento recuperado, desencontrado) | Wardens (kit padronizado) |
+|---|---|---|
+| **Líder** | Chapéu de caubói, colete BVD e botas de obra (Apocalypse Now) | Quepe de oficial, colete Carrier e botas de polícia (Apocalypse Now) |
+| **Guarda** | Capacete de moto, peitoral e botas enferrujados (Apocalypse Now) | Conjunto completo de Kevlar preto e capacete F70 (Modern Mayhem) |
+| **Soldado de expedição** | Kevlar e capacete F70 cor areia (Modern Mayhem) | Kevlar verde e capacete SSH68 (Modern Mayhem) |
+
+Correção de compatibilidade: o Modern Mayhem 2.0.1 processa seus pacotes (atalhos de mochila, curios e visão noturna) na thread de rede, o que derrubava o servidor ao abrir a mochila pelo atalho (`ConcurrentModificationException`). O Lazarus NPCs faz esses pacotes rodarem na thread principal; sem o Modern Mayhem, nada é alterado.
+
+Sem o Modern Mayhem, as peças dele são trocadas por equivalentes do Apocalypse Now (S.W.A.T., camuflado de deserto, colete militar). O equipamento não cai ao matar o NPC e nunca substitui armadura que ele já tenha. Armeiros, comerciantes e médicos não usam armadura; moradores das versões 1.8 e 1.9 trocam automaticamente o antigo colete de couro tingido.
+
 ## API para outros mods
 
-A partir da 1.5.0, o pacote público `com.lazarus.npcs.api` permite que outros mods do Project Lazarus criem encontros com os NPCs existentes. O **Lazarus Events 0.6.0** usa a API nos encontros **Rescue** (pedido de socorro), **Last Defense** (última defesa), **False Radio** (falso sinal de rádio) e **Military** (base militar).
+A partir da 1.5.0, o pacote público `com.lazarus.npcs.api` permite que outros mods do Project Lazarus criem encontros com os NPCs existentes. O **Lazarus Events 0.12.0** usa a API nos encontros **Rescue** (pedido de socorro), **Last Defense** (última defesa), **False Radio** (falso sinal de rádio) e **Military** (base militar), além das bases, profissões, rotinas e missões de facção.
 
 | Recurso | O que o mod integrador pode fazer |
 |---|---|
 | Identidade e reputação | Consultar nome, papel e facção; ajustar reputação por um motivo identificado (até 10 pontos, pago uma vez por encontro); conceder passagem por um grupo de saqueadores ou soldados, como depois do pedágio (desde 1.6.0). |
+| Política de facções | Ações políticas confirmadas mudam também 25% da reputação da facção rival, com arredondamento acumulado; abrir a interface normal do NPC após um diálogo e armar atores de cenário Rovers/Wardens (desde 1.7.0). |
+| Profissões e patrulha | Atribuir líder, guarda, armeiro, comerciante, médico (desde 1.9.0) ou soldado de expedição por API e criar uma rota persistente de 2 a 8 pontos para uma ordem `GUARD_AREA` (desde 1.8.0). |
 | Ordens de cenário | Mandar guardar uma área, defender um aliado, seguir um jogador, esperar ou recuar, com prazo. A ordem sobrevive a chunk descarregado e reinício, cede ao combate, à rendição e a contratos de jogadores, e nunca toma um NPC contratado. |
 | Diálogos | Mostrar uma fala com 1 a 4 escolhas na tela do NPC. O servidor revalida cada escolha, e ela vale uma única vez. |
 | Tarefas de encontro | Entregar itens, chegar a um local, proteger ou escoltar o NPC, eliminar alvos marcados ou etapas em sequência, com prazo, recompensa paga uma vez e política de morte. Aparecem na nova aba **Encounters** do diário e convivem com a tarefa comum. |
@@ -238,7 +279,7 @@ O script [`scripts/patch_soldier_loot.py`](scripts/patch_soldier_loot.py) ajusta
 
 ### Jogadores e servidores
 
-1. Baixe [`lazarusnpcs-1.6.0.jar`](dist/lazarusnpcs-1.6.0.jar) e instale os mods exigidos acima. O Lazarus Events 0.5.0 ou superior exige esta versão.
+1. Compile `lazarusnpcs-1.13.1.jar` em `build/libs/` e instale os mods exigidos acima. O Lazarus Events 0.12.1 exige NPCs 1.13.0 ou posterior.
 2. Coloque o JAR na pasta `mods` do perfil. No CurseForge, clique com o botão direito no perfil e escolha **Open Folder**.
 3. Em multiplayer, instale a **mesma versão** no servidor e em todos os clientes. Versões com protocolo diferente recusam a conexão em vez de falhar.
 4. Remova qualquer JAR antigo `lazarusnpcs` antes de atualizar e reinicie o Minecraft.
@@ -255,7 +296,7 @@ Os JARs dos mods usados na compilação e nos testes não são redistribuídos. 
 | `curios-5.14.1.jar` | Curios 5.14.1 para 1.20.1 |
 | `tacz-1.1.8.jar` | TaCZ 1.1.8 para 1.20.1 |
 | `lazarusstealth-0.2.0.jar` | Lazarus Stealth 0.2.0 (compilação da integração opcional) |
-| `lazarusevents-0.6.0.jar` | Lazarus Events 0.6.0 (só para os GameTests de integração) |
+| `lazarusevents-0.12.0.jar` | Lazarus Events 0.12.0 (só para os GameTests de integração) |
 | `dyairdrop-1.0.0.jar` | Dyairdrop 1.0.0, exigido pelo Lazarus Events |
 | `geckolib-4.8.4.jar` | GeckoLib 4.8.4, usado pelo Dyairdrop |
 
@@ -271,7 +312,7 @@ O JAR compilado fica em `build/libs/`. O `build` também roda as verificações 
 gradlew runGameTestServer
 ```
 
-Esse comando sobe um servidor 1.20.1 sem interface, com os mods de `libs/`, e roda os **57 GameTests** dentro do mundo: escolta (seguir, defender, prazo, morte do NPC e do dono, dimensão, NPC preso, dono offline e reconexão), guarda (área, posto, posse com dois jogadores, limites, chunk descarregado, reembolso e gravação), rendição, revide e hostilidade, fogo amigo, passagem paga com dois jogadores, armas de fogo, dados de mundos antigos, uma medição de custo com 24 humanos hostis e 2 guardas; a API (identidade, reputação com limite e pagamento único, ordens com prazo, precedência, prioridade, recarga e mod dono ausente, diálogo com token forjado, escolha repetida e jogador distante, tarefas com entrega, dois jogadores, morte do emissor, sequência e provedor ausente); e os encontros do Lazarus Events de ponta a ponta: **Rescue** (sucesso com recompensa, morte do sobrevivente e cancelamento), **Last Defense** (posição mantida com recompensa proporcional e barricada perdida) e **False Radio** (pagamento com e sem comida, blefe único, luta pela carga e o saqueador que vem fazer a exigência), **Military** (guarda da base, recepção por reputação e tarefa do perímetro com relatório e pagamento) e o tamanho das ondas, além da passagem concedida pela API.
+Esse comando sobe um servidor 1.20.1 sem interface, com os mods de `libs/`, e roda os **96 GameTests** dentro do mundo: escolta (seguir, defender, prazo, morte do NPC e do dono, dimensão, NPC preso, dono offline e reconexão), guarda (área, posto, posse com dois jogadores, limites, chunk descarregado, reembolso e gravação), rendição, revide e hostilidade, fogo amigo, passagem paga com dois jogadores, armas de fogo, dados de mundos antigos, uma medição de custo com 24 humanos hostis e 2 guardas; a API (identidade, reputação com limite e pagamento único, **rivalidade política**, ordens com prazo, precedência, prioridade, recarga e mod dono ausente, diálogo com token forjado, escolha repetida e jogador distante, tarefas com entrega, dois jogadores, morte do emissor, sequência e provedor ausente); e os encontros do Lazarus Events de ponta a ponta: **Rescue** (sucesso com recompensa, morte do sobrevivente e cancelamento), **Last Defense** (posição mantida com recompensa proporcional e barricada perdida) e **False Radio** (pagamento com e sem comida, blefe único, luta pela carga e o saqueador que vem fazer a exigência), **Military** (guarda da base, recepção por reputação e tarefa do perímetro com relatório e pagamento) e o tamanho das ondas, além da passagem concedida pela API.
 
 ---
 

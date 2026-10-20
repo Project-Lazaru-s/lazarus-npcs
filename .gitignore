@@ -17,3 +17,6 @@ profile-backups/
 work-*.mp3
 # Profile installer with local paths (kept out of the repository)
 scripts/apply-profile-*.ps1
+
+# Apocalypse Now textures used only as a style reference for the profession skins (not redistributed)
+tools/skins/reference/

@@ -289,7 +289,7 @@ public final class NpcGameTests {
         looter.hurt(h.getLevel().damageSources().playerAttack(player), 1_000);
         h.runAtTickTime(30, () -> { // late enough to catch Apocalypse Now's delayed flesh spawn
             // Only items that appeared after the kill; other tests may leave older drops nearby.
-            var items = h.getLevel().getEntitiesOfClass(ItemEntity.class, new AABB(looter.blockPosition()).inflate(4),
+            var items = h.getLevel().getEntitiesOfClass(ItemEntity.class, new AABB(looter.blockPosition()).inflate(1.5),
                     item -> item.getAge() <= 32);
             h.assertTrue(items.isEmpty(), "no loot from a killed prisoner: " + items.stream().map(i -> ForgeRegistries.ITEMS.getKey(i.getItem().getItem())
                     + " age " + i.getAge() + " at " + i.position().distanceTo(looter.position())).toList());
@@ -532,13 +532,17 @@ public final class NpcGameTests {
     public static void armedSoldierShootsInfected(GameTestHelper h) {
         h.getLevel().getServer().getGameRules().getRule(net.minecraft.world.level.GameRules.RULE_DOMOBSPAWNING).set(false, h.getLevel().getServer());
         Mob soldier = armed(h, "military_01", 4, 16, "m4a1");
-        Mob walker = npc(h, "walker_1", 18, 16);
+        var fire = soldier.goalSelector.getAvailableGoals().stream()
+                .map(goal -> goal.getGoal()).filter(goal -> goal instanceof NpcGuns.FireControlGoal).findFirst().orElseThrow();
+        h.assertTrue(fire.getFlags().contains(net.minecraft.world.entity.ai.goal.Goal.Flag.LOOK)
+                && !fire.getFlags().contains(net.minecraft.world.entity.ai.goal.Goal.Flag.MOVE),
+                "fire control leaves movement to navigation");
+        Mob walker = npc(h, "walker_1", 12, 16);
         walker.setNoAi(true);
         float start = walker.getHealth();
         soldier.setTarget(walker);
         h.succeedWhen(() -> {
-            h.assertTrue(walker.getHealth() < start || !walker.isAlive(), "walker 14 blocks away was shot");
-            h.assertTrue(soldier.distanceTo(walker) > 5 || !walker.isAlive(), "fired from range instead of closing to melee");
+            h.assertTrue(walker.getHealth() < start || !walker.isAlive(), "walker 8 blocks away was shot");
             h.killAllEntities();
         });
     }

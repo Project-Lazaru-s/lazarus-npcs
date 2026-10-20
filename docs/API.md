@@ -1,13 +1,15 @@
-# API de integração do Lazarus NPCs — versão 1
+# API de integração do Lazarus NPCs — versão 5
 
-Pacote público `com.lazarus.npcs.api`, incluído no JAR normal do Lazarus NPCs a partir da **1.5.0** (`grantPassage` desde a **1.6.0**). Outros mods usam os NPCs humanos do Apocalypse Now para criar encontros com comportamento, falas, escolhas, tarefas, recompensas e consequências, sem ler NBT interno nem depender de classes privadas.
+Pacote público `com.lazarus.npcs.api`, incluído no JAR normal do Lazarus NPCs a partir da **1.5.0** (`grantPassage` desde a **1.6.0**; relações políticas e armamento de cenários desde a **1.7.0**; rotinas desde a **1.13.0**). Outros mods usam os NPCs humanos do Apocalypse Now para criar encontros com comportamento, falas, escolhas, tarefas, recompensas e consequências, sem ler NBT interno nem depender de classes privadas.
+
+Desde a **1.8.0**, integrações podem atribuir uma profissão persistente e uma rota de patrulha vinculada à sua própria ordem. IDs: `lazarusnpcs:leader`, `guard`, `armorer`, `trader`, `medic` (desde 1.9.0: oferece a estabilização dentro da base) e `expedition_soldier`. Para uma profissão de base, forneça o UUID da base; outra base não pode reassumir aquele NPC. Rovers/Wardens comuns sem atribuição explícita usam o perfil de comerciante, preservando as interações anteriores.
 
 ## Dependência
 
 ```groovy
 // build.gradle do mod integrador: compilar contra o JAR do Lazarus NPCs, sem embuti-lo
 repositories { flatDir { dirs 'libs' } }
-dependencies { compileOnly fg.deobf("blank:lazarusnpcs:1.5.0") }
+dependencies { compileOnly fg.deobf("blank:lazarusnpcs:1.13.0") }
 ```
 
 ```toml
@@ -15,12 +17,44 @@ dependencies { compileOnly fg.deobf("blank:lazarusnpcs:1.5.0") }
 [[dependencies.seumod]]
     modId="lazarusnpcs"
     mandatory=true
-    versionRange="[1.5.0,)"
+    versionRange="[1.13.0,)"
     ordering="AFTER"
     side="BOTH"
 ```
 
-`NpcApi.API_VERSION` vale `1`. Dentro de uma versão da API, métodos só são acrescentados; assinaturas e significados de status existentes não mudam.
+`NpcApi.API_VERSION` vale `5`. A versão 5 acrescenta a doutrina `NpcFactions.Definition.doctrine()`, `NpcApi.setRoutine`, `ScenarioOrder.TRAVEL` e `NpcApi.setTravelRoute`. O construtor anterior de seis argumentos de `NpcFactions.Definition` continua disponível. A versão 4 acrescentou identidade explícita de facção e o catálogo `NpcFactions`; a versão 3 acrescentou profissão persistente e rota de patrulha. As chamadas anteriores preservam seu contrato.
+
+```java
+NpcApi.assignProfession(resident, id("leader"), baseId);
+NpcApi.profession(resident); // Optional<ResourceLocation>
+NpcApi.assign(guard, guardAreaOrder);
+NpcApi.setPatrolRoute(guard, ownerId, baseId, List.of(postA, postB, postC));
+```
+
+`setPatrolRoute` aceita de 2 a 8 pontos dentro do raio da ordem `GUARD_AREA` do mesmo dono e encontro. A rota é salva na entidade e cede a combate, rendição e contratos. Profissões de base e estoque nunca devem ser inferidos a partir de tags de entidade do mod integrador.
+
+### Viagem em expedição (API v5, NPCs 1.13.0)
+
+```java
+NpcApi.assign(scout, ScenarioAssignment.at(owner, encounterId, ScenarioOrder.TRAVEL,
+        GlobalPos.of(level.dimension(), start), 16, 12_000));
+NpcApi.setTravelRoute(scout, owner, encounterId, List.of(start, p2, p3, finish));
+```
+
+Use a mesma ordem e rota para os demais membros do grupo. A rota aceita de 4 a 8 pontos carregados, na mesma altura aproximada do NPC. O primeiro membro por UUID é o batedor; os demais acompanham sua posição. Combate e contratos suspendem o deslocamento, que é retomado depois. A navegação não carrega chunks; o mod integrador deve encerrar a expedição quando o destino sair da área carregada ou vencer o prazo. Atribuir uma ordem de outro encontro limpa a rota anterior.
+
+### Rotina de base (desde 1.13.0)
+
+```java
+var routine = new Routine(baseId,
+        List.of(new Activity(Activity.Kind.WORK, workPost, 5),
+                new Activity(Activity.Kind.SOCIAL, meetingPoint, 2),
+                new Activity(Activity.Kind.EAT, canteen, 1)),
+        NightDuty.SLEEP, bedFoot, shelter, defensePost);
+NpcApi.setRoutine(resident, routine);
+```
+
+`Routine`, `Activity` e `NightDuty` ficam em `com.lazarus.npcs.api.ai`. A rotina é transitória: reenvie no carregamento do chunk e na renovação das ordens. `WATCH` mantém o posto à noite e defende a base sob alerta; civis procuram abrigo. O alerta dura 600 ticks após um ataque e é compartilhado por todos os moradores com o mesmo `baseId`. Para `SLEEP`, informe o bloco de pé de uma cama; as atividades aceitam de 1 a 8 destinos carregados, até 64 blocos do NPC. Contratos e combate têm prioridade.
 
 ## Threads e fases
 
@@ -47,12 +81,16 @@ Rejeições normais nunca lançam exceção: voltam como `ApiResult` com `status
 
 ```java
 NpcApi.identity(entity)                    // Optional<NpcIdentityView>: uuid, name, role, faction, interactive
+NpcApi.assignFaction(survivor, "wardens")  // identidade explícita; não depende da variante da skin
 NpcApi.reputation(player, "haven")         // -100 a 100
 NpcApi.adjustReputation(player, "haven", 5, id("rescue_success"), encounterId)
+NpcApi.areRivals("rovers", "wardens")       // true
+NpcApi.adjustPoliticalReputation(player, "rovers", 8, id("faction_mission"), missionId)
 ```
 
 - Papéis: `survivor`, `hunter`, `medic`, `military`; hostis: `looter`, `soldier`, `cannibal` (facção `hostile`).
 - `adjustReputation` aceita no máximo **10 pontos por chamada**, exige um `reason` e passa pelas regras normais (limiar de inimigo em -40, fim de contratos, evento). Com `encounterId`, o mesmo motivo paga **uma vez por jogador e encontro**; a segunda chamada retorna `DUPLICATE`. Toda alteração é registrada no log como `[api] reputation ...`.
+- `adjustPoliticalReputation` usa a mesma validação e deduplicação. Cada rival definido em `NpcFactions` recebe, por padrão, 25% do ganho ou perda efetiva com sinal oposto; frações são acumuladas separadamente por par. O percentual pode ser alterado em `config/lazarusnpcs-common.toml` (`factions.rivalReputationPercent`, 0–100). Comércio, dano e comandos continuam usando `adjustReputation` sem efeito indireto. A parcela política fica registrada separadamente para que a recuperação diária de hostilidade comum não a apague. Consulte [o guia para adicionar facções](FACTIONS.md).
 
 ### Passagem por hostis (desde 1.6.0)
 
@@ -71,6 +109,7 @@ ApiResult result = NpcApi.assign(survivor, order);
 NpcApi.assign(survivor, ScenarioAssignment.at(id("rescue"), encounterId, ScenarioOrder.FOLLOW_PLAYER, anchor, 4, 24_000)
         .withTarget(player.getUUID()));
 NpcApi.clearAssignment(survivor, id("rescue"), encounterId);
+NpcApi.armScenarioActor(survivor, id("faction_skirmish"), encounterId);
 ```
 
 | Ordem | Comportamento |
@@ -84,6 +123,8 @@ NpcApi.clearAssignment(survivor, id("rescue"), encounterId);
 **Precedência** (da maior para a menor): morte ou remoção e rendição → combate imediato e defesa própria → contrato de escolta ou guarda de um jogador → recuo tático (vigia, posto, cobertura, perseguição) → ordem de cenário → rotina (passeio). A ordem de cenário cede sozinha sempre que uma regra acima vale e retoma depois. Ela **nunca** toma um NPC contratado nem faz um NPC hostil negociar.
 
 **Limites:** raio 1–32; duração 20–168 000 ticks de mundo; prioridade 0–9 (uma ordem de outro encontro só substitui a atual com prioridade **maior**); o namespace de `owner` precisa ser um mod carregado; a âncora precisa estar na dimensão do NPC.
+
+`armScenarioActor` exige uma ordem vigente com o mesmo dono e ID e aceita somente Rovers ou Wardens. Equipa uma arma do arsenal da própria facção e usa as regras existentes de tiro, dano e drop. Foi acrescentado para o confronto controlado; uma ordem comum não arma o NPC automaticamente.
 
 **Persistência:** a ordem fica salva na própria entidade (`LazarusNpcsScenario`), sobrevive a chunk descarregado, saída do jogo e reinício, e é revalidada quando a entidade carrega. Prazo vencido termina com `EXPIRED`; dono ausente (mod removido) termina com `OWNER_MISSING`; morte com `DIED`; remoção com `REMOVED`. A navegação é a mesma dos outros comportamentos, então barreiras perigosas (`spike_barrier`, `barbed_wire` e a tag `lazarusnpcs:npc_hazards`) continuam evitadas. Cada NPC recebe um único `Goal` de cenário, adicionado uma vez por instância; a verificação periódica roda uma vez por segundo e só em NPCs com ordem.
 
@@ -121,6 +162,7 @@ NpcApi.finishTask(player, offer.id(), NpcApi.TASK_COMPLETED);
 
 - **Objetivos prontos:** `deliver` (entregar ao emissor, tudo ou nada), `reach` (jogador chega ao destino), `protect` (manter o emissor vivo por um tempo), `escort` (levar o emissor até o destino), `kill` (filtro recebe vítima e `encounterId`), `counter` (avançado por `progressTask`) e `sequence` (etapas em ordem; o contador `stage` gera evento ao avançar). Objetivos próprios implementam `TaskObjective` sem estado próprio: tudo fica nos contadores da instância.
 - **Estados:** `OFFERED` → `ACTIVE` → (`READY` quando `turnIn`) → `COMPLETED`; ou `FAILED`, `EXPIRED`, `ABANDONED`. A oferta mostra título, descrição e recompensa com **Accept/Decline** e vence em 2 minutos.
+- `TaskObjective.turnIn(context)` é chamado antes de pagar uma tarefa em `READY`; retorna `false` se o jogador perdeu o pacote exigido. Pode consumir um item identificado pelo ID da instância. O padrão retorna `true`, preservando tarefas antigas.
 - **Coexistência:** a tarefa comum do NPC (`LazarusNpcsTasks.Active`) não muda. O jogador pode ter **uma tarefa comum e uma de encontro** ao mesmo tempo. Uma nova oferta de encontro com outra em andamento retorna `BUSY`; o jogador precisa abandonar a anterior pelo diário. O mesmo NPC e encontro não podem ser aceitos por dois jogadores.
 - **Idempotência:** o estado muda e é salvo **antes** do pagamento. Repetir pacote, clicar duas vezes, recarregar o mundo ou chamar `finishTask` de novo não duplica itens nem reputação. Itens que não cabem no inventário caem aos pés do jogador.
 - **Morte:** `DeathPolicy.FAIL` falha a tarefa quando o jogador morre; `PERSIST` mantém. `failIfGiverDies` falha quando o emissor morre (também para quem estava offline, pelo registro de mortes do mod).

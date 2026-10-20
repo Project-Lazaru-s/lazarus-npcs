@@ -230,7 +230,7 @@ final class EncounterTasks {
         }
         player.inventoryMenu.broadcastChanges();
         if (definition.rewardFaction() != null && definition.rewardReputation() > 0)
-            NpcReputation.adjust(player, definition.rewardFaction(), definition.rewardReputation(), definition.id());
+            NpcReputation.adjustPolitical(player, definition.rewardFaction(), definition.rewardReputation(), definition.id());
         player.sendSystemMessage(Component.literal("Encounter task complete: ").append(definition.title())
                 .append(Component.literal(". Received " + rewardText(definition) + "."))
                 .withStyle(style -> style.withColor(0x8FCB91)));
@@ -358,7 +358,7 @@ final class EncounterTasks {
 
     private static Optional<DialoguePage> giverPage(DialogueContext c) {
         CompoundTag task = open(c.player());
-        if (task.isEmpty() || !c.npc().getUUID().equals(uuid(task, "Giver"))) return Optional.empty();
+        if (task.isEmpty() || !authorizedGiver(c.npc(), task)) return Optional.empty();
         TaskDefinition d = definition(task);
         if (d == null) return Optional.empty();
         UUID id = task.getUUID("Id");
@@ -367,14 +367,19 @@ final class EncounterTasks {
             case READY -> Optional.of(new DialoguePage(Component.literal("You made it back. Tell me everything."), List.of(
                     new DialogueOption("report", Component.literal("Report"), ctx -> {
                         CompoundTag t = open(ctx.player());
-                        if (!t.isEmpty() && t.getUUID("Id").equals(id) && state(t) == TaskState.READY) complete(ctx.player(), t, "completed");
+                        if (!t.isEmpty() && t.getUUID("Id").equals(id) && state(t) == TaskState.READY
+                                && authorizedGiver(ctx.npc(), t)) {
+                            if (d.objective().turnIn(new Ctx(ctx.player(), t))) complete(ctx.player(), t, "completed");
+                            else ctx.player().sendSystemMessage(Component.literal("You do not have the required mission item."));
+                        }
                     }),
                     new DialogueOption("later", Component.literal("Later"), ctx -> {}))));
             case ACTIVE -> d.objective().canDeliver(new Ctx(c.player(), task))
                     ? Optional.of(new DialoguePage(Component.literal("Did you bring what I asked for?"), List.of(
                             new DialogueOption("deliver", Component.literal("Hand it over"), ctx -> {
                                 CompoundTag t = open(ctx.player());
-                                if (t.isEmpty() || !t.getUUID("Id").equals(id) || state(t) != TaskState.ACTIVE) return;
+                                if (t.isEmpty() || !t.getUUID("Id").equals(id) || state(t) != TaskState.ACTIVE
+                                        || !authorizedGiver(ctx.npc(), t)) return;
                                 if (d.objective().deliver(new Ctx(ctx.player(), t))) {
                                     ctx.player().inventoryMenu.broadcastChanges();
                                     evaluate(ctx.player(), t);
@@ -384,6 +389,13 @@ final class EncounterTasks {
                     : Optional.empty();
             default -> Optional.empty();
         };
+    }
+
+    private static boolean authorizedGiver(LivingEntity npc, CompoundTag task) {
+        if (npc.getUUID().equals(uuid(task, "Giver"))) return true;
+        UUID base = NpcProfessions.base(npc);
+        return base != null && base.equals(uuid(task, "Encounter")) && "leader".equals(NpcProfessions.get(npc))
+                && "lazarusevents".equals(definition(task) == null ? "" : definition(task).id().getNamespace());
     }
 
     // ---- Journal
