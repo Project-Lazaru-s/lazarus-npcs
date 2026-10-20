@@ -878,6 +878,58 @@ public final class EventsScenarioGameTests {
         h.succeed();
     }
 
+    // ---- Vaccine project (Haven/Military V1, phase 2)
+
+    @GameTest(template = "arena", batch = "events_vaccine_task", timeoutTicks = 60)
+    public static void vaccineDeliveriesPayAndEveryThirdGivesSerum(GameTestHelper h) {
+        UUID encounter = UUID.randomUUID();
+        List<Mob> staff = base(h, encounter);
+        Mob medic = staff.stream().filter(m -> "medic".equals(NpcIdentity.role(m))).findFirst().orElseThrow();
+        BlockPos at = medic.blockPosition().subtract(h.absolutePos(BlockPos.ZERO));
+        ServerPlayer player = NpcGameTests.player(h, at.getX() + 2, at.getZ());
+        Item sample = item("lazarusevents:infected_sample"), serum = item("lazarusevents:experimental_serum");
+        h.assertTrue(sample != null && serum != null && sample != net.minecraft.world.item.Items.AIR, "vaccine items registered");
+        h.assertTrue(NpcDialogues.open(player, medic, DialogueTrigger.INTERACT, null)
+                && NpcDialogues.session(player).options().contains("vaccine"), "the medic talks about the vaccine");
+        choose(player, medic, NpcDialogues.session(player).options().indexOf("vaccine"));
+        choose(player, medic, 0); // Accept
+        h.assertTrue(NpcApi.encounterTask(player).map(t -> t.state() == TaskState.ACTIVE
+                && t.taskId().toString().equals("lazarusevents:military_vaccine")).orElse(false), "vaccine task active");
+        player.getInventory().add(new ItemStack(sample, 3));
+        h.assertTrue(NpcDialogues.open(player, medic, DialogueTrigger.INTERACT, null), "hand-over offered");
+        choose(player, medic, 0); // Deliver
+        h.assertTrue(NpcApi.encounterTask(player).map(t -> t.state() == TaskState.READY).orElse(false), "samples handed over");
+        h.assertTrue(NpcDialogues.open(player, medic, DialogueTrigger.INTERACT, null)
+                && NpcDialogues.session(player).dialogue().toString().equals("lazarusnpcs:task_giver"), "report dialogue");
+        choose(player, medic, 0); // Report
+        h.assertTrue(NpcApi.encounterTask(player).map(t -> t.state() == TaskState.COMPLETED).orElse(false), "delivered");
+        h.assertTrue(player.getInventory().countItem(sample) == 0 && NpcReputation.get(player, "military") == 3, "samples taken, +3 Military");
+        h.assertTrue(player.getInventory().countItem(item("apocalypsenow:antibiotics")) == 1, "medical reward");
+        h.assertTrue(player.getInventory().countItem(serum) == 0, "no serum on the first delivery");
+        Class<?>[] types = {ServerPlayer.class};
+        h.assertTrue(!(boolean) call("VaccineProject", "completed", types, player), "second delivery: no serum");
+        h.assertTrue((boolean) call("VaccineProject", "completed", types, player)
+                && player.getInventory().countItem(serum) == 1, "third delivery: serum");
+        done(h, player);
+        h.succeed();
+    }
+
+    @GameTest(template = "arena", batch = "events_vaccine_serum", timeoutTicks = 20)
+    public static void serumGrantsADayOfImmunityAndOnlySpecialsDropSamples(GameTestHelper h) {
+        ServerPlayer player = NpcGameTests.player(h, 10, 10);
+        call("VaccineProject$Serum", "inject", new Class<?>[]{net.minecraft.world.entity.LivingEntity.class}, player);
+        h.assertTrue((boolean) call("VaccineProject", "immune", new Class<?>[]{net.minecraft.world.entity.LivingEntity.class}, player),
+                "immune after the serum");
+        h.assertTrue(player.getPersistentData().getLong("LazarusEventsSerumImmunity") - h.getLevel().getGameTime() == 24_000,
+                "for one day");
+        h.assertTrue(player.hasEffect(net.minecraft.world.effect.MobEffects.CONFUSION), "nausea side effect");
+        var zombie = h.spawn(net.minecraft.world.entity.EntityType.ZOMBIE, 12, 2, 12);
+        h.assertTrue(!(boolean) call("VaccineProject", "special", new Class<?>[]{net.minecraft.world.entity.LivingEntity.class}, zombie),
+                "ordinary zombies drop no samples");
+        done(h, player);
+        h.succeed();
+    }
+
     @GameTest(template = "arena", batch = "events_passage_api", timeoutTicks = 20)
     public static void passageOnlyForTollTakers(GameTestHelper h) {
         ServerPlayer player = NpcGameTests.player(h, 10, 10);
