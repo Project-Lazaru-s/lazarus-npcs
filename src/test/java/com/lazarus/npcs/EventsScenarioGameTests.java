@@ -1566,6 +1566,7 @@ public final class EventsScenarioGameTests {
                     for (int second = 1; second <= 16; second++) call("GasZone", "breathe", breathe, bare, (long) second);
                     h.assertTrue(bare.hasEffect(net.minecraft.world.effect.MobEffects.POISON) && bare.getHealth() < health,
                             "unprotected: poisoned, then hurt (" + health + " -> " + bare.getHealth() + ")");
+                    clearGas(data);
                     done(h, bare);
                     h.succeed();
                 });
@@ -1606,6 +1607,111 @@ public final class EventsScenarioGameTests {
             } catch (ReflectiveOperationException failure) {
                 throw new IllegalStateException(failure);
             }
+        });
+    }
+
+    // ---- Military quarantine (events V1, phase 4)
+
+    /** Gas zones outlive their test; drop them so later tests reusing the spot don't choke. */
+    @SuppressWarnings("unchecked")
+    private static void clearGas(Object data) {
+        try {
+            Field list = data.getClass().getDeclaredField("encounters"), type = Class.forName("com.lazarus.events.EventData$Encounter").getDeclaredField("type");
+            list.setAccessible(true);
+            type.setAccessible(true);
+            for (Object entry : List.copyOf((List<Object>) list.get(data)))
+                if ("infection_zone".equals(type.get(entry)) || "military_quarantine".equals(type.get(entry))) ((List<Object>) list.get(data)).remove(entry);
+        } catch (ReflectiveOperationException failure) {
+            throw new IllegalStateException(failure);
+        }
+    }
+
+    @GameTest(template = "arena", batch = "events_quarantine", timeoutTicks = 60)
+    public static void quarantineIsFencedGassedAndPaysWhenCleared(GameTestHelper h) {
+        loadedArena(h, () -> {
+            for (int x = 10; x <= 18; x++) for (int z = 10; z <= 18; z++) {
+                h.setBlock(new BlockPos(x, 5, z), Blocks.STONE_BRICKS);
+                if (x == 10 || x == 18 || z == 10 || z == 18)
+                    for (int y = 2; y <= 4; y++) h.setBlock(new BlockPos(x, y, z), Blocks.STONE_BRICKS);
+            }
+            var door = Blocks.OAK_DOOR.defaultBlockState().setValue(net.minecraft.world.level.block.DoorBlock.FACING, net.minecraft.core.Direction.NORTH);
+            h.setBlock(new BlockPos(14, 2, 10), door); // a real door: it stops the room's flood fill, as in CityWorld
+            h.setBlock(new BlockPos(14, 3, 10), door.setValue(net.minecraft.world.level.block.DoorBlock.HALF,
+                    net.minecraft.world.level.block.state.properties.DoubleBlockHalf.UPPER));
+            h.setBlock(new BlockPos(12, 2, 16), Blocks.CHEST); // furniture the scene must clear
+            h.setBlock(new BlockPos(16, 2, 12), Blocks.FLOWER_POT);
+            ServerPlayer player = NpcGameTests.player(h, 14, 15);
+            try {
+                Class<?> dataType = Class.forName("com.lazarus.events.EventData");
+                Method get = dataType.getDeclaredMethod("get", ServerLevel.class);
+                get.setAccessible(true);
+                Object data = get.invoke(null, h.getLevel());
+                Object outcome = call("LazarusEvents", "attempt", new Class<?>[]{ServerLevel.class, ServerPlayer.class, String.class,
+                        boolean.class, boolean.class, dataType}, h.getLevel(), player, "military_quarantine", true, true, data);
+                h.assertTrue(success(outcome), "the quarantine takes the room: " + outcome);
+                java.util.Map<String, Integer> found = new java.util.HashMap<>();
+                for (BlockPos pos : BlockPos.betweenClosed(h.absolutePos(new BlockPos(6, 1, 0)), h.absolutePos(new BlockPos(22, 5, 18)))) {
+                    var state = h.getLevel().getBlockState(pos);
+                    String key = state.getBlock() instanceof net.minecraft.world.level.block.SignBlock ? "sign"
+                            : net.minecraftforge.registries.ForgeRegistries.BLOCKS.getKey(state.getBlock()).getPath();
+                    found.merge(key, 1, Integer::sum);
+                }
+                for (String needed : new String[] {"wire_fence", "sandbagbarrier", "lantern", "sign", "water_cauldron", "toxic_waste_barrel",
+                        "corpsesack", "military_communication_radio", "white_bed", "lectern", "barrel", "chest"})
+                    h.assertTrue(found.getOrDefault(needed, 0) > 0, "quarantine scenery has " + needed + ": " + found);
+                h.assertTrue(found.get("sign") >= 3 && found.get("wire_fence") >= 20, "a fenced perimeter under signs: " + found);
+                h.assertTrue(found.getOrDefault("concrete_barrier", 0) > 0 && found.getOrDefault("white_wool", 0) >= 10, "jersey barriers and a decon tent: " + found);
+                h.assertTrue(!h.getLevel().getBlockState(h.absolutePos(new BlockPos(12, 2, 16))).is(Blocks.CHEST)
+                        && !h.getLevel().getBlockState(h.absolutePos(new BlockPos(16, 2, 12))).is(Blocks.FLOWER_POT), "the old furniture is gone");
+                boolean joined = false;
+                for (BlockPos pos : BlockPos.betweenClosed(h.absolutePos(new BlockPos(7, 1, 1)), h.absolutePos(new BlockPos(21, 4, 9)))) {
+                    var state = h.getLevel().getBlockState(pos);
+                    for (var property : state.getProperties())
+                        if (property instanceof net.minecraft.world.level.block.state.properties.BooleanProperty flag
+                                && java.util.Set.of("north", "east", "south", "west").contains(flag.getName()) && state.getValue(flag)
+                                && net.minecraftforge.registries.ForgeRegistries.BLOCKS.getKey(state.getBlock()).getPath().equals("wire_fence")) joined = true;
+                }
+                h.assertTrue(joined, "the wire fence panels connect");
+                List<Mob> infected = h.getLevel().getEntitiesOfClass(Mob.class, new AABB(h.absolutePos(new BlockPos(14, 2, 10))).inflate(12),
+                        mob -> mob.getTags().stream().anyMatch(tag -> tag.startsWith("lazarusevents:")));
+                long hazmat = infected.stream().filter(mob -> mob.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.CHEST).getItem()
+                        == item("apocalypsenow:hazmat_suit_chestplate")).count();
+                long guards = infected.stream().filter(mob -> mob.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.HEAD).getItem()
+                        == item("apocalypsenow:gas_mask_helmet_helmet") && mob.getZ() < h.absolutePos(new BlockPos(14, 2, 10)).getZ()).count();
+                h.assertTrue(hazmat >= 2 && guards >= 2, "hazmat infected inside, masked soldiers outside: " + hazmat + "/" + guards);
+                h.assertTrue((boolean) call("GasZone", "gassed", new Class<?>[]{String.class}, "military_quarantine"), "and gas");
+
+                Field list = dataType.getDeclaredField("encounters");
+                list.setAccessible(true);
+                Class<?> encounterType = Class.forName("com.lazarus.events.EventData$Encounter");
+                Field typeField = encounterType.getDeclaredField("type"), dataField = encounterType.getDeclaredField("data");
+                typeField.setAccessible(true);
+                dataField.setAccessible(true);
+                Object quarantine = null;
+                for (Object entry : (List<?>) list.get(data))
+                    if ("military_quarantine".equals(typeField.get(entry))
+                            && ((net.minecraft.nbt.CompoundTag) dataField.get(entry)).contains("Radio")) quarantine = entry;
+                h.assertTrue(quarantine != null && ((net.minecraft.nbt.CompoundTag) dataField.get(quarantine)).contains("Leak"), "radio and leak remembered");
+                BlockPos radio = BlockPos.of(((net.minecraft.nbt.CompoundTag) dataField.get(quarantine)).getLong("Radio"));
+                player.teleportTo(radio.getX() + 0.5, radio.getY(), radio.getZ() + 1.5);
+                Class<?>[] chatter = {ServerLevel.class, encounterType, long.class};
+                long now = h.getLevel().getGameTime() + 1000;
+                h.assertTrue((boolean) call("Quarantine", "chatter", chatter, h.getLevel(), quarantine, now)
+                        && !(boolean) call("Quarantine", "chatter", chatter, h.getLevel(), quarantine, now + 20), "the field radio calls out, not every tick");
+
+                int before = NpcApi.reputation(player, "military");
+                Class<?>[] tick = {ServerLevel.class, dataType};
+                call("Quarantine", "tick", tick, h.getLevel(), data);
+                for (Mob mob : infected) mob.discard();
+                call("Quarantine", "tick", tick, h.getLevel(), data);
+                call("Quarantine", "tick", tick, h.getLevel(), data);
+                h.assertTrue(NpcApi.reputation(player, "military") == before + 2, "clearing pays +2 Military once");
+                clearGas(data);
+            } catch (ReflectiveOperationException failure) {
+                throw new IllegalStateException(failure);
+            }
+            done(h, player);
+            h.succeed();
         });
     }
 
