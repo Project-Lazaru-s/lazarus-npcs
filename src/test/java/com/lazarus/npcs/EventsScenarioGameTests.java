@@ -1715,6 +1715,29 @@ public final class EventsScenarioGameTests {
         });
     }
 
+    // ---- Territories (territory events V1, phase T0)
+
+    @GameTest(template = "arena", batch = "events_cityworld_sites", timeoutTicks = 20)
+    public static void cityWorldSitesAnswerSafelyWithoutCityWorld(GameTestHelper h) {
+        ServerLevel level = h.getLevel();
+        BlockPos inside = h.absolutePos(new BlockPos(8, 2, 8));
+        Class<?>[] at = {ServerLevel.class, BlockPos.class};
+        h.assertTrue(!(boolean) call("CityWorldSites", "available", new Class<?>[0]), "the test runtime has no CityWorld");
+        h.assertTrue(((java.util.OptionalInt) call("CityWorldSites", "streetLevel", new Class<?>[]{ServerLevel.class}, level)).isEmpty(), "no street");
+        h.assertTrue(((java.util.Optional<?>) call("CityWorldSites", "lotClass", at, level, inside)).isEmpty()
+                && ((java.util.Optional<?>) call("CityWorldSites", "subway", at, level, inside)).isEmpty()
+                && !(boolean) call("CityWorldSites", "inSubway", at, level, inside), "no lot, no metro");
+        h.assertTrue(((List<?>) call("CityWorldSites", "findLots", new Class<?>[]{ServerLevel.class, BlockPos.class, String.class, int.class, int.class},
+                level, inside, "SubwayStationLot", 8, 1)).isEmpty() && ((java.util.Map<?, ?>) call("CityWorldSites", "fullInfo", at, level, inside)).isEmpty(),
+                "no lots found, no info");
+        // The arena is dug out under the terrain: below the open-sky height it reads as cave, above it as surface.
+        int sky = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, inside.getX(), inside.getZ());
+        h.assertTrue("CAVE".equals(call("CityWorldSites", "territory", at, level, inside).toString()), "the arena is a cave");
+        h.assertTrue("SURFACE".equals(call("CityWorldSites", "territory", at, level, new BlockPos(inside.getX(), sky, inside.getZ())).toString()),
+                "open sky is surface");
+        h.succeed();
+    }
+
     @GameTest(template = "arena", batch = "events_passage_api", timeoutTicks = 20)
     public static void passageOnlyForTollTakers(GameTestHelper h) {
         ServerPlayer player = NpcGameTests.player(h, 10, 10);
