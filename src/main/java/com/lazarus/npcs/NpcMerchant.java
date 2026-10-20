@@ -68,7 +68,21 @@ final class NpcMerchant implements Merchant {
                 && npc.distanceToSqr(player) <= 64.0;
     }
 
+    static final int HAVEN_DISCOUNT_STANDING = 10;
+
+    /**
+     * Refuge traders give friends of the Haven 15% off. Applied to the shared offers on every opening, so the price
+     * follows whoever opened the screen last. ponytail: two players trading with one NPC at once share that price.
+     */
+    void applyDiscount(ServerPlayer player) {
+        boolean discount = "haven".equals(NpcIdentity.faction(npc)) && NpcProfessions.base(npc) != null
+                && NpcReputation.get(player, "haven") >= HAVEN_DISCOUNT_STANDING;
+        for (var offer : getOffers())
+            offer.setSpecialPriceDiff(discount ? -Math.max(1, Math.round(offer.getBaseCostA().getCount() * 0.15f)) : 0);
+    }
+
     void openTradeScreen(ServerPlayer player, Component title) {
+        applyDiscount(player);
         OptionalInt menuId = player.openMenu(new SimpleMenuProvider(
                 (id, inventory, ignored) -> new SafeMerchantMenu(id, inventory, this), title));
         if (menuId.isPresent() && !getOffers().isEmpty()) {

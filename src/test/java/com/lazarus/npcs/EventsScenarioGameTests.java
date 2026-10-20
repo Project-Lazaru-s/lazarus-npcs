@@ -502,6 +502,7 @@ public final class EventsScenarioGameTests {
     }
 
     private static void placeBase(GameTestHelper h, String faction, int rx, int rz) {
+        boolean refuge = faction.equals("haven"); // no rivals: six residents, one patrol, no theft missions
         BlockPos center = h.absolutePos(new BlockPos(16, 2, 16));
         ServerLevel level = h.getLevel();
         flatten(h, center, rx, rz);
@@ -523,9 +524,9 @@ public final class EventsScenarioGameTests {
             Field roster = base.getClass().getDeclaredField("staff");
             roster.setAccessible(true);
             @SuppressWarnings("unchecked") List<UUID> ids = (List<UUID>) roster.get(base);
-            h.assertTrue(ids.size() == 10 && ids.stream().allMatch(id -> h.getLevel().getEntity(id) instanceof Mob),
+            h.assertTrue(ids.size() == (refuge ? 6 : 10) && ids.stream().allMatch(id -> h.getLevel().getEntity(id) instanceof Mob),
                     faction + " garrison spawned: " + ids.stream().map(id -> String.valueOf(h.getLevel().getEntity(id))).toList());
-            for (int slot = 1; slot <= 2; slot++) {
+            for (int slot = 1; slot <= (refuge ? 1 : 2); slot++) {
                 Mob guard = (Mob) h.getLevel().getEntity(ids.get(slot));
                 h.assertTrue(guard.getPersistentData().contains("LazarusNpcsPatrol"), faction + " guard " + slot + " has a patrol route");
             }
@@ -533,7 +534,9 @@ public final class EventsScenarioGameTests {
                 BlockPos feet = h.getLevel().getEntity(id).blockPosition();
                 h.assertTrue(level.getBlockState(feet).getCollisionShape(level, feet).isEmpty()
                         && level.getBlockState(feet.above()).getCollisionShape(level, feet.above()).isEmpty(),
-                        faction + " resident not inside a block at " + feet.toShortString());
+                        faction + " resident not inside a block at " + feet.toShortString() + ": "
+                                + level.getBlockState(feet) + " / " + level.getBlockState(feet.above())
+                                + " (" + NpcProfessions.assigned(h.getLevel().getEntity(id) instanceof Mob m ? m : null) + ")");
             }
             Method destination = Class.forName("com.lazarus.events.FactionMissions").getDeclaredMethod("destination",
                     ServerLevel.class, base.getClass(), boolean.class);
@@ -542,6 +545,12 @@ public final class EventsScenarioGameTests {
             h.assertTrue(level.getBlockState(depot.pos()).is(Blocks.BARREL), faction + " depot barrel at " + depot.pos().toShortString());
             h.assertTrue(level.getBlockEntity(depot.pos()) instanceof net.minecraft.world.Container container
                     && !container.getItem(0).isEmpty(), faction + " depot stocked");
+            if (refuge) {
+                havenServices(h, ids);
+                h.killAllEntities();
+                h.succeed();
+                return;
+            }
 
             // The journal lists the rival depot as the task destination.
             Mob leader = (Mob) h.getLevel().getEntity(ids.get(0));
@@ -564,6 +573,31 @@ public final class EventsScenarioGameTests {
 
     @GameTest(template = "arena", batch = "zz_faction_base_layout", timeoutTicks = 40)
     public static void roversCampPlacesWorkingLayout(GameTestHelper h) { placesBase(h, "rovers", 11, 10); }
+
+    @GameTest(template = "arena", batch = "zz_faction_base_layout", timeoutTicks = 40)
+    public static void havenRefugePlacesWorkingLayout(GameTestHelper h) { placesBase(h, "haven", 10, 9); }
+
+    /** Refuge services: Haven residents wear their profession, the trader discounts for friends, Haven takes guard duty. */
+    private static void havenServices(GameTestHelper h, List<UUID> ids) {
+        Mob leader = (Mob) h.getLevel().getEntity(ids.get(0)), guard = (Mob) h.getLevel().getEntity(ids.get(1));
+        Mob trader = (Mob) h.getLevel().getEntity(ids.get(3)), medic = (Mob) h.getLevel().getEntity(ids.get(4));
+        h.assertTrue("haven".equals(NpcIdentity.faction(leader)) && "leader".equals(NpcProfessions.assigned(leader))
+                && "trader".equals(NpcProfessions.assigned(trader)) && "stabilize".equals(NpcProfessions.baseService(medic)),
+                "Haven professions and the medic's service");
+        h.assertTrue(!guard.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.CHEST).isEmpty(), "Haven guard wears a vest");
+        BlockPos at = trader.blockPosition().subtract(h.absolutePos(BlockPos.ZERO));
+        ServerPlayer player = NpcGameTests.player(h, at.getX() + 1, at.getZ());
+        NpcMerchant merchant = new NpcMerchant(trader, "survivor");
+        merchant.applyDiscount(player);
+        h.assertTrue(!merchant.getOffers().isEmpty() && merchant.getOffers().stream().allMatch(o -> o.getSpecialPriceDiff() == 0),
+                "no discount for strangers");
+        NpcReputation.adjust(player, "haven", 10);
+        merchant.applyDiscount(player);
+        h.assertTrue(merchant.getOffers().stream().allMatch(o -> o.getSpecialPriceDiff() < 0), "15% off for friends of the Haven");
+        Mob loose = NpcGameTests.npc(h, "survivor_1", 4, 4);
+        h.assertTrue(NpcContracts.canGuard(loose) && !NpcContracts.canGuard(guard), "loose Haven survivors take guard duty, residents stay home");
+        h.getLevel().getServer().getPlayerList().remove(player);
+    }
 
     @GameTest(template = "arena", batch = "zz_faction_base_layout", timeoutTicks = 40)
     public static void wardensFortPlacesWorkingLayout(GameTestHelper h) { placesBase(h, "wardens", 12, 11); }

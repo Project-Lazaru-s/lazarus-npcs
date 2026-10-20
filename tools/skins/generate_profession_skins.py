@@ -26,6 +26,10 @@ PALETTES = {
     "wardens": dict(base="344d68", dark="1d2935", mid="587490", light="879bac",
                     accent="426d91", accent_light="789ebc", pants="354b60", boot="222b34",
                     metal="9aa8ae", shirt="607589", white="e8e9e4", green="4b9958"),
+    # Haven: civilians in worn olive knitwear and brown work trousers, a pale green armband.
+    "haven": dict(base="5f7a4f", dark="33402b", mid="7f9a68", light="a9bf8f",
+                  accent="8fcb91", accent_light="c4e5b5", pants="6b5a45", boot="3d3127",
+                  metal="9a9a8e", shirt="b9ab8c", white="ece7d8", green="4b9958"),
 }
 
 # Distinct faces are useful even when uniforms share a faction palette.
@@ -38,6 +42,10 @@ PEOPLE = {
         ("8f614c", "29282a", "3d302d"), ("c49872", "694d38", "554033"),
         ("d4aa84", "493c32", "62473c"), ("684739", "26262a", "2f292b"),
         ("e4bfa0", "7b6047", "735243"), ("a7775d", "353438", "43342f")),
+    "haven": (
+        ("c99a76", "5b4636", "6b4f3e"), ("8a5d45", "2a2726", "3a2e2a"),
+        ("e6c2a2", "a07c52", "8a6a4c"), ("b07b5a", "3b3330", "4a3a33"),
+        ("d8ad8a", "6e6e70", "7a6a60"), ("7a5240", "1f1e20", "2e2626")),
 }
 
 # Each entry is (x, y, width, height). Side ordering follows the standard skin UV.
@@ -380,7 +388,7 @@ def assembled(image, view):
 
 def preview_sheet(skins):
     cell_w, cell_h = 218, 246
-    sheet = Image.new("RGB", (cell_w * 6 + 24, cell_h * 2 + 24), "#171d24")
+    sheet = Image.new("RGB", (cell_w * 6 + 24, cell_h * len(PALETTES) + 24), "#171d24")
     draw = ImageDraw.Draw(sheet)
     font = ImageFont.load_default()
     for row, faction in enumerate(PALETTES):

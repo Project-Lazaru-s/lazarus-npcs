@@ -32,7 +32,10 @@ public final class NpcFactions {
     }
 
     private static final List<Definition> ALL = List.of(
-            new Definition("haven", "Haven", 0x8FCB91, List.of(1, 2, 3), Set.of(), false),
+            // Haven has a refuge and professions but no rivals, so it never takes part in faction conflict.
+            new Definition("haven", "Haven", 0x8FCB91, List.of(1, 2, 3), Set.of(), true,
+                    new Doctrine(Doctrine.Stance.HOLD, 14, 2, 0, false, 0.45,
+                            Doctrine.Formation.FILE, 3, true)),
             new Definition("rovers", "Rovers", 0xE0AE67, List.of(4, 5, 6), Set.of("wardens"), true,
                     new Doctrine(Doctrine.Stance.MOBILE, 14, 2, 0.34, false, 0.25,
                             Doctrine.Formation.LOOSE, 4, true)),

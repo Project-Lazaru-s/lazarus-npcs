@@ -26,39 +26,44 @@ final class NpcProfessions {
     /**
      * Armor per faction and profession, slot order head/chest/legs/feet; each slot lists alternatives and the first
      * registered armor item of that slot wins, so Modern Mayhem pieces fall back to Apocalypse Now ones. Rovers wear
-     * salvaged, mismatched gear; Wardens wear matching kit. Professions without a loadout are told apart by skin.
+     * salvaged, mismatched gear; Wardens wear matching kit; Haven guards a light civilian vest. Professions without a loadout are told apart by skin.
      */
-    static final Map<String, String[][]> LOADOUTS = Map.of(
-            "rovers_leader", new String[][] {
+    static final Map<String, String[][]> LOADOUTS = Map.ofEntries(
+            Map.entry("rovers_leader", new String[][] {
                     {"apocalypsenow:cowboy_hat_helmet"},
                     {"apocalypsenow:bvd_assault_vest_chestplate"},
                     {},
-                    {"apocalypsenow:construction_boots"}},
-            "rovers_guard", new String[][] {
+                    {"apocalypsenow:construction_boots"}}),
+            Map.entry("rovers_guard", new String[][] {
                     {"apocalypsenow:black_motorcycle_helmet_helmet"},
                     {"apocalypsenow:rusty_chestplate"},
                     {},
-                    {"apocalypsenow:rusty_boots"}},
-            "rovers_expedition_soldier", new String[][] {
+                    {"apocalypsenow:rusty_boots"}}),
+            Map.entry("rovers_expedition_soldier", new String[][] {
                     {"mm:tan_combat_helmet", "apocalypsenow:mo4_mud_camo_helmet"},
                     {"mm:tan_kevlar_chestplate", "apocalypsenow:desertcamo_6b_chestplate"},
                     {},
-                    {"mm:tan_kevlar_boots", "apocalypsenow:brazilian_army_boots"}},
-            "wardens_leader", new String[][] {
+                    {"mm:tan_kevlar_boots", "apocalypsenow:brazilian_army_boots"}}),
+            Map.entry("wardens_leader", new String[][] {
                     {"apocalypsenow:officer_helmet"},
                     {"apocalypsenow:officer_beret_chestplate"},
                     {},
-                    {"apocalypsenow:police_boots"}},
-            "wardens_guard", new String[][] {
+                    {"apocalypsenow:police_boots"}}),
+            Map.entry("wardens_guard", new String[][] {
                     {"mm:black_combat_helmet", "apocalypsenow:swat_helmet"},
                     {"mm:black_kevlar_chestplate", "apocalypsenow:swat_chestplate"},
                     {"mm:black_kevlar_leggings", "apocalypsenow:swat_leggings"},
-                    {"mm:black_kevlar_boots", "apocalypsenow:swat_boots"}},
-            "wardens_expedition_soldier", new String[][] {
+                    {"mm:black_kevlar_boots", "apocalypsenow:swat_boots"}}),
+            Map.entry("wardens_expedition_soldier", new String[][] {
                     {"mm:green_ssh68_helmet", "apocalypsenow:un_armor_helmet"},
                     {"mm:green_kevlar_chestplate", "apocalypsenow:military_bulletprooft_vest_chestplate"},
                     {},
-                    {"mm:green_kevlar_boots", "apocalypsenow:military_urban_boots"}});
+                    {"mm:green_kevlar_boots", "apocalypsenow:military_urban_boots"}}),
+            Map.entry("haven_guard", new String[][] {
+                    {"apocalypsenow:hunting_helmet"},
+                    {"apocalypsenow:civilian_body_vest_chestplate"},
+                    {},
+                    {}}));
     private static final Map<String, String> LABELS = Map.of(
             "leader", "Leader", "guard", "Guard", "armorer", "Armorer",
             "trader", "Trader", "medic", "Medic", "expedition_soldier", "Expedition soldier");

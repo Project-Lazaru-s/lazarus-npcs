@@ -17,7 +17,7 @@ public final class NpcFactionTest {
         assert NpcFactions.get("unknown") == null;
         assert NpcFactions.get("rovers").doctrine().flankShare() == 0.34;
         assert NpcFactions.get("wardens").doctrine().bounding();
-        assert NpcFactions.get("haven").doctrine().equals(com.lazarus.npcs.api.ai.Doctrine.DEFAULT);
+        assert NpcFactions.get("haven").professions() && NpcFactions.get("haven").rivals().isEmpty();
         CompoundTag oldReputation = new CompoundTag();
         oldReputation.putInt("survivor", 17);
         oldReputation.putInt("military", 9);

@@ -178,7 +178,8 @@ final class NpcContracts {
     static boolean canGuard(LivingEntity npc) {
         if (NpcProfessions.base(npc) != null) return false;
         String role = NpcIdentity.role(npc);
-        return "military".equals(role) || "survivor".equals(role) && "wardens".equals(NpcIdentity.faction(npc));
+        String faction = NpcIdentity.faction(npc);
+        return "military".equals(role) || "survivor".equals(role) && ("wardens".equals(faction) || "haven".equals(faction));
     }
 
     static void hireEscort(ServerPlayer player, Mob npc) {
@@ -211,7 +212,7 @@ final class NpcContracts {
 
     static void hireGuard(ServerPlayer player, Mob npc, int radius) {
         if (!canGuard(npc)) {
-            say(player, "Only military NPCs and Wardens survivors take guard duty.");
+            say(player, "Only military NPCs and Wardens or Haven survivors take guard duty.");
             return;
         }
         boolean allowedRadius = false;
