@@ -1514,6 +1514,101 @@ public final class EventsScenarioGameTests {
         }
     }
 
+    // ---- Infection zone (events V1, phase 3)
+
+    @SuppressWarnings("unchecked")
+    @GameTest(template = "arena", batch = "events_infection_zone", timeoutTicks = 140)
+    public static void gasFillsTheRoomAndOnlyMasksKeepYouAlive(GameTestHelper h) {
+        loadedArena(h, () -> {
+            for (int x = 10; x <= 18; x++) for (int z = 10; z <= 18; z++) {
+                h.setBlock(new BlockPos(x, 5, z), Blocks.STONE_BRICKS);
+                if (x == 10 || x == 18 || z == 10 || z == 18)
+                    for (int y = 2; y <= 4; y++) h.setBlock(new BlockPos(x, y, z), Blocks.STONE_BRICKS);
+            }
+            h.setBlock(new BlockPos(14, 2, 10), Blocks.AIR);
+            h.setBlock(new BlockPos(14, 3, 10), Blocks.AIR);
+            ServerPlayer bare = NpcGameTests.player(h, 14, 15);
+            try {
+                Class<?> dataType = Class.forName("com.lazarus.events.EventData");
+                Method get = dataType.getDeclaredMethod("get", ServerLevel.class);
+                get.setAccessible(true);
+                Object data = get.invoke(null, h.getLevel());
+                Object outcome = call("LazarusEvents", "attempt", new Class<?>[]{ServerLevel.class, ServerPlayer.class, String.class,
+                        boolean.class, boolean.class, dataType}, h.getLevel(), bare, "infection_zone", true, true, data);
+                h.assertTrue(success(outcome), "gas fills the room around the player");
+                Field list = dataType.getDeclaredField("encounters");
+                list.setAccessible(true);
+                Class<?> encounterType = Class.forName("com.lazarus.events.EventData$Encounter");
+                Field typeField = encounterType.getDeclaredField("type"), dataField = encounterType.getDeclaredField("data");
+                typeField.setAccessible(true);
+                dataField.setAccessible(true);
+                java.util.Set<Long> cells = null;
+                long expires = 0;
+                Object zone = null;
+                for (Object entry : (List<Object>) list.get(data)) {
+                    var state = (net.minecraft.nbt.CompoundTag) dataField.get(entry);
+                    if (!"infection_zone".equals(typeField.get(entry))) continue;
+                    java.util.Set<Long> candidate = new java.util.HashSet<>();
+                    for (long packed : state.getLongArray("Cells")) candidate.add(packed);
+                    if (candidate.contains(bare.blockPosition().asLong())) { cells = candidate; expires = state.getLong("Expires"); zone = entry; }
+                }
+                h.assertTrue(cells != null && cells.size() >= 25, "the gas covers the room floor");
+                h.assertTrue(expires - h.getLevel().getGameTime() == 48_000L, "the leak lasts two days");
+                h.assertTrue(!cells.contains(h.absolutePos(new BlockPos(14, 2, 8)).asLong()), "and stays inside");
+                boolean barrel = false;
+                for (BlockPos pos : BlockPos.betweenClosed(h.absolutePos(new BlockPos(11, 2, 11)), h.absolutePos(new BlockPos(17, 2, 17))))
+                    if (h.getLevel().getBlockState(pos).is(Blocks.BARREL)) barrel = true;
+                h.assertTrue(barrel, "a reward barrel waits deep inside");
+
+                Class<?>[] breathe = {ServerPlayer.class, long.class};
+                h.runAfterDelay(80, () -> { // past the fresh player's spawn invulnerability
+                    float health = bare.getHealth();
+                    for (int second = 1; second <= 16; second++) call("GasZone", "breathe", breathe, bare, (long) second);
+                    h.assertTrue(bare.hasEffect(net.minecraft.world.effect.MobEffects.POISON) && bare.getHealth() < health,
+                            "unprotected: poisoned, then hurt (" + health + " -> " + bare.getHealth() + ")");
+                    done(h, bare);
+                    h.succeed();
+                });
+
+                ServerPlayer masked = NpcGameTests.player(h, 13, 15);
+                ItemStack mask = new ItemStack(item("apocalypsenow:gas_mask_helmet_helmet"));
+                masked.setItemSlot(net.minecraft.world.entity.EquipmentSlot.HEAD, mask);
+                int exposure = 0;
+                for (int second = 1; second <= 10; second++) exposure += (int) call("GasZone", "breathe", breathe, masked, (long) second);
+                ItemStack worn = masked.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.HEAD);
+                h.assertTrue(exposure == 0 && !masked.hasEffect(net.minecraft.world.effect.MobEffects.POISON), "a gas mask blocks the gas");
+                h.assertTrue(!worn.isDamageableItem() || worn.getDamageValue() > 0, "and wears down: " + worn.getDamageValue());
+
+                ServerPlayer suited = NpcGameTests.player(h, 15, 15);
+                String[] pieces = {"helmet", "chestplate", "leggings", "boots"};
+                net.minecraft.world.entity.EquipmentSlot[] slots = {net.minecraft.world.entity.EquipmentSlot.HEAD,
+                        net.minecraft.world.entity.EquipmentSlot.CHEST, net.minecraft.world.entity.EquipmentSlot.LEGS,
+                        net.minecraft.world.entity.EquipmentSlot.FEET};
+                for (int i = 0; i < 4; i++) suited.setItemSlot(slots[i], new ItemStack(item("apocalypsenow:hazmat_suit_" + pieces[i])));
+                for (int second = 1; second <= 10; second++) call("GasZone", "breathe", breathe, suited, (long) second);
+                h.assertTrue(suited.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.HEAD).getDamageValue() == 0
+                        && !suited.hasEffect(net.minecraft.world.effect.MobEffects.POISON), "a full hazmat suit blocks it without wear");
+                h.getLevel().getServer().getPlayerList().remove(masked);
+                h.getLevel().getServer().getPlayerList().remove(suited);
+
+                Mob choking = NpcGameTests.npc(h, "survivor_1", 13, 16), safe = NpcGameTests.npc(h, "survivor_2", 15, 16);
+                choking.setItemSlot(net.minecraft.world.entity.EquipmentSlot.HEAD, ItemStack.EMPTY);
+                safe.setItemSlot(net.minecraft.world.entity.EquipmentSlot.HEAD, new ItemStack(item("apocalypsenow:gas_mask_helmet_helmet")));
+                Class<?>[] choke = {Mob.class, Class.forName("com.lazarus.events.EventData$Encounter")};
+                Object leak = zone;
+                h.runAfterDelay(20, () -> { // fresh mobs must land before they can path
+                    call("GasZone", "choke", choke, choking, leak);
+                    call("GasZone", "choke", choke, safe, leak);
+                    h.assertTrue(choking.hasEffect(net.minecraft.world.effect.MobEffects.POISON) && choking.getHealth() < choking.getMaxHealth()
+                            && !choking.getNavigation().isDone(), "an unmasked NPC chokes and flees the gas");
+                    h.assertTrue(!safe.hasEffect(net.minecraft.world.effect.MobEffects.POISON), "a masked NPC is fine");
+                });
+            } catch (ReflectiveOperationException failure) {
+                throw new IllegalStateException(failure);
+            }
+        });
+    }
+
     @GameTest(template = "arena", batch = "events_passage_api", timeoutTicks = 20)
     public static void passageOnlyForTollTakers(GameTestHelper h) {
         ServerPlayer player = NpcGameTests.player(h, 10, 10);
