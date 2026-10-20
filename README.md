@@ -70,6 +70,7 @@ As definições comuns de facção agora ficam em `NpcFactions`: nome, cor, vari
 - Em **-40** ou menos, você vira **inimigo**: os NPCs da facção atacam ao te ver, e todas as escoltas e guardas dela são encerrados. O diário marca a facção como **ENEMY**.
 - **Revide:** atacar um NPC de facção faz ele e os NPCs da mesma facção num raio de 16 blocos lutarem contra você por um minuto. Jogadores em Creative ou espectador nunca são alvo.
 - Concluir uma tarefa dos Rovers reduz em 1 a reputação com os Wardens, e vice-versa.
+- **Haven** também tem profissões (líder, guarda, armeiro, comerciante, médico e soldado de expedição) e uma doutrina defensiva, sem rivais. Sobreviventes avulsos do Haven assumem a guarda como os Wardens, e os comerciantes do refúgio dão **15% de desconto** a partir de 10 de confiança com o Haven.
 
 ---
 
@@ -121,6 +122,8 @@ O tratamento recupera a vida comum e não cura ferimentos ou infecções de outr
 
 ## Encontros hostis
 
+**Grupos com nome.** Cada território de 512 blocos pertence a uma gangue de saqueadores com nome próprio, sorteada pela semente do mundo; os avisos e a tela de negociação dizem qual gangue domina a área. Os canibais formam o culto **The Hollow**, e os soldados hostis são anunciados como **desertores**. Os nomes ficam disponíveis pela API (`HostileGroups`) para os eventos usarem em bilhetes, rádio e recompensas.
+
 **Saqueadores (looters).** Avisam o grupo inteiro antes de atacar. Durante os 10 segundos de aviso, clique com a mão vazia para abrir a negociação: pague **2 comidas enlatadas** para passar por cinco minutos, ou saia da área. Atacar um deles provoca o grupo. Grupos de dois ou mais têm um **vigia** com luneta, que avista de 24 blocos, mantém distância e dá o sinal para os combatentes. O grupo se dispersa quando perde metade dos membros (o vigia conta em dobro) ou quando a vida somada cai abaixo de 40%.
 
 **Soldados desertores.** Mantêm um **posto de controle** onde surgiram. Avisam a 20 blocos, mas só atacam quem cruza a linha de 12 blocos do posto depois do aviso, ou quem os ataca. O pedágio é de **2 comidas enlatadas e 2 barras de ferro**. Em combate, chamam os companheiros, buscam cobertura contra armas de longo alcance e flanqueiam pelos lados. Equipamento de valor é raro no loot: armadura em 3% por peça, e nada de kits de armas.
@@ -149,7 +152,7 @@ Um saqueador ou soldado desertor muito ferido pode se render. A chance é sortea
 | Grupo com vantagem de 2 para 1 | Não se rende |
 | Canibal | Nunca se rende |
 
-O limite é de 80%. Quem se rende larga a arma (ela não cai no chão), ganha uma etiqueta de nome, para de lutar e espera um minuto. Só quem o rendeu pode abrir o painel: **Take supplies** entrega um pacote fixo e modesto (saqueador: 1 comida enlatada e talvez uma bandagem; soldado: 1 comida enlatada e 2 barras de ferro), e **Let them go** o libera. Nos dois casos ele vai embora e some quando sai de vista. Matar um prisioneiro não rende loot, XP nem carne humana e custa **3** de confiança com os Wardens.
+O limite é de 80%. Quem se rende larga a arma (ela não cai no chão), ganha uma etiqueta de nome, para de lutar e espera um minuto. Só quem o rendeu pode abrir o painel: **Take supplies** entrega um pacote fixo e modesto (saqueador: 1 comida enlatada e talvez uma bandagem; soldado: 1 comida enlatada e 2 barras de ferro), e **Let them go** o libera. Nos dois casos ele vai embora e some quando sai de vista; soltar o prisioneiro rende **+1** com o Haven. Outros mods podem acrescentar escolhas ao painel pela API: com o Lazarus Events, **interrogar** (ele entrega o esconderijo do grupo, criado a 80–160 blocos e marcado no diário) e **mandar para o refúgio do Haven**. Matar um prisioneiro não rende loot, XP nem carne humana e custa **3** de confiança com os Wardens.
 
 ---
 
@@ -214,7 +217,15 @@ Sem o Lazarus Stealth, os NPCs se comportam exatamente como na 1.0.0.
 
 ## Skins e equipamento por profissão
 
-Rovers e Wardens com profissão atribuída (moradores de base e soldados de expedição) usam uma **skin própria para cada profissão de cada facção**: 12 texturas originais em `assets/lazarusnpcs/textures/entity/profession/`, geradas por `tools/skins/generate_profession_skins.py` (prévia em [docs/profession_skins_preview.png](docs/profession_skins_preview.png)). O servidor informa a profissão ao cliente quando o NPC entra no alcance de visão; sobreviventes comuns, sem profissão, mantêm as skins do Apocalypse Now. A faixa no braço esquerdo identifica a facção (ferrugem nos Rovers, azul com divisa branca nos Wardens) e o médico usa braçadeira branca com cruz verde.
+Haven, Rovers e Wardens com profissão atribuída (moradores de base e do refúgio e soldados de expedição) usam uma **skin própria para cada profissão de cada facção**: 18 texturas originais em `assets/lazarusnpcs/textures/entity/profession/`, geradas por `tools/skins/generate_profession_skins.py` (prévia em [docs/profession_skins_preview.png](docs/profession_skins_preview.png)). O servidor informa a profissão ao cliente quando o NPC entra no alcance de visão; sobreviventes comuns, sem profissão, mantêm as skins do Apocalypse Now. A faixa no braço esquerdo identifica a facção (ferrugem nos Rovers, azul com divisa branca nos Wardens, paleta civil oliva no Haven) e o médico usa braçadeira branca com cruz verde.
+
+Os grupos hostis e os militares também têm skins próprias, sorteadas por NPC (geradores em `tools/skins/`, prévias em `docs/`):
+
+| Grupo | Variações |
+|---|---|
+| **Desertores** | Sargento, mascarado e ferido |
+| **Militares** | Fuzileiro, operador de rádio, soldado de quarentena e médico de campo |
+| **The Hollow** (canibais) | Pregador, açougueiro e "olhos vazios" |
 
 Líderes, guardas e soldados de expedição também vestem armaduras de mods:
 
@@ -226,11 +237,11 @@ Líderes, guardas e soldados de expedição também vestem armaduras de mods:
 
 Correção de compatibilidade: o Modern Mayhem 2.0.1 processa seus pacotes (atalhos de mochila, curios e visão noturna) na thread de rede, o que derrubava o servidor ao abrir a mochila pelo atalho (`ConcurrentModificationException`). O Lazarus NPCs faz esses pacotes rodarem na thread principal; sem o Modern Mayhem, nada é alterado.
 
-Sem o Modern Mayhem, as peças dele são trocadas por equivalentes do Apocalypse Now (S.W.A.T., camuflado de deserto, colete militar). O equipamento não cai ao matar o NPC e nunca substitui armadura que ele já tenha. Armeiros, comerciantes e médicos não usam armadura; moradores das versões 1.8 e 1.9 trocam automaticamente o antigo colete de couro tingido.
+Os guardas do Haven usam capacete de caça e colete civil. Sem o Modern Mayhem, as peças dele são trocadas por equivalentes do Apocalypse Now (S.W.A.T., camuflado de deserto, colete militar). O equipamento não cai ao matar o NPC e nunca substitui armadura que ele já tenha. Armeiros, comerciantes e médicos não usam armadura; moradores das versões 1.8 e 1.9 trocam automaticamente o antigo colete de couro tingido.
 
 ## API para outros mods
 
-A partir da 1.5.0, o pacote público `com.lazarus.npcs.api` permite que outros mods do Project Lazarus criem encontros com os NPCs existentes. O **Lazarus Events 0.12.0** usa a API nos encontros **Rescue** (pedido de socorro), **Last Defense** (última defesa), **False Radio** (falso sinal de rádio) e **Military** (base militar), além das bases, profissões, rotinas e missões de facção.
+A partir da 1.5.0, o pacote público `com.lazarus.npcs.api` permite que outros mods do Project Lazarus criem encontros com os NPCs existentes; a versão atual da API é a **7** (`NpcApi.API_VERSION`). O **Lazarus Events 0.22.0** usa a API nos encontros **Rescue**, **Last Defense**, **False Radio** e **Military**, nas bases e expedições de facção, no refúgio do Haven, nos esconderijos de hostis, nas escolhas de prisioneiros e nas recompensas de reputação dos ninhos e da quarentena.
 
 | Recurso | O que o mod integrador pode fazer |
 |---|---|
@@ -240,6 +251,8 @@ A partir da 1.5.0, o pacote público `com.lazarus.npcs.api` permite que outros m
 | Ordens de cenário | Mandar guardar uma área, defender um aliado, seguir um jogador, esperar ou recuar, com prazo. A ordem sobrevive a chunk descarregado e reinício, cede ao combate, à rendição e a contratos de jogadores, e nunca toma um NPC contratado. |
 | Diálogos | Mostrar uma fala com 1 a 4 escolhas na tela do NPC. O servidor revalida cada escolha, e ela vale uma única vez. |
 | Tarefas de encontro | Entregar itens, chegar a um local, proteger ou escoltar o NPC, eliminar alvos marcados ou etapas em sequência, com prazo, recompensa paga uma vez e política de morte. Aparecem na nova aba **Encounters** do diário e convivem com a tarefa comum. |
+| Grupos hostis | Consultar o nome da gangue que domina cada território e o do culto The Hollow (`HostileGroups`, desde 1.15.0). |
+| Prisioneiros | Acrescentar escolhas ao painel de rendição e ser avisado quando um prisioneiro é interrogado ou mandado embora (`PrisonerChoices`, `PrisonerInterrogated`, `PrisonerSentAway`, desde 1.16.0). |
 | Eventos | Ser avisado quando uma ordem começa ou termina, um ator é ferido ou morre, uma escolha é feita, uma tarefa muda de estado ou a reputação muda. |
 
 O contrato completo, com limites, precedência, estados, eventos e exemplos, está em [`docs/API.md`](docs/API.md). Sem um mod integrador, o Lazarus NPCs se comporta exatamente como antes.
@@ -279,7 +292,7 @@ O script [`scripts/patch_soldier_loot.py`](scripts/patch_soldier_loot.py) ajusta
 
 ### Jogadores e servidores
 
-1. Compile `lazarusnpcs-1.16.0.jar` em `build/libs/` e instale os mods exigidos acima. O Lazarus Events 0.21.0 exige NPCs 1.16.0 ou posterior.
+1. Compile `lazarusnpcs-1.16.0.jar` em `build/libs/` e instale os mods exigidos acima. O Lazarus Events 0.22.0 exige NPCs 1.16.0 ou posterior.
 2. Coloque o JAR na pasta `mods` do perfil. No CurseForge, clique com o botão direito no perfil e escolha **Open Folder**.
 3. Em multiplayer, instale a **mesma versão** no servidor e em todos os clientes. Versões com protocolo diferente recusam a conexão em vez de falhar.
 4. Remova qualquer JAR antigo `lazarusnpcs` antes de atualizar e reinicie o Minecraft.
@@ -296,7 +309,8 @@ Os JARs dos mods usados na compilação e nos testes não são redistribuídos. 
 | `curios-5.14.1.jar` | Curios 5.14.1 para 1.20.1 |
 | `tacz-1.1.8.jar` | TaCZ 1.1.8 para 1.20.1 |
 | `lazarusstealth-0.2.0.jar` | Lazarus Stealth 0.2.0 (compilação da integração opcional) |
-| `lazarusevents-0.12.0.jar` | Lazarus Events 0.12.0 (só para os GameTests de integração) |
+| `lazarusevents-0.22.0.jar` | Lazarus Events 0.22.0 (só para os GameTests de integração) |
+| `modernmayhem-2.0.1.jar` | Modern Mayhem 2.0.1 (armaduras opcionais e a correção de pacotes) |
 | `dyairdrop-1.0.0.jar` | Dyairdrop 1.0.0, exigido pelo Lazarus Events |
 | `geckolib-4.8.4.jar` | GeckoLib 4.8.4, usado pelo Dyairdrop |
 
@@ -312,7 +326,7 @@ O JAR compilado fica em `build/libs/`. O `build` também roda as verificações 
 gradlew runGameTestServer
 ```
 
-Esse comando sobe um servidor 1.20.1 sem interface, com os mods de `libs/`, e roda os **96 GameTests** dentro do mundo: escolta (seguir, defender, prazo, morte do NPC e do dono, dimensão, NPC preso, dono offline e reconexão), guarda (área, posto, posse com dois jogadores, limites, chunk descarregado, reembolso e gravação), rendição, revide e hostilidade, fogo amigo, passagem paga com dois jogadores, armas de fogo, dados de mundos antigos, uma medição de custo com 24 humanos hostis e 2 guardas; a API (identidade, reputação com limite e pagamento único, **rivalidade política**, ordens com prazo, precedência, prioridade, recarga e mod dono ausente, diálogo com token forjado, escolha repetida e jogador distante, tarefas com entrega, dois jogadores, morte do emissor, sequência e provedor ausente); e os encontros do Lazarus Events de ponta a ponta: **Rescue** (sucesso com recompensa, morte do sobrevivente e cancelamento), **Last Defense** (posição mantida com recompensa proporcional e barricada perdida) e **False Radio** (pagamento com e sem comida, blefe único, luta pela carga e o saqueador que vem fazer a exigência), **Military** (guarda da base, recepção por reputação e tarefa do perímetro com relatório e pagamento) e o tamanho das ondas, além da passagem concedida pela API.
+Esse comando sobe um servidor 1.20.1 sem interface, com os mods de `libs/`, e roda os **118 GameTests** dentro do mundo: escolta (seguir, defender, prazo, morte do NPC e do dono, dimensão, NPC preso, dono offline e reconexão), guarda (área, posto, posse com dois jogadores, limites, chunk descarregado, reembolso e gravação), rendição, revide e hostilidade, fogo amigo, passagem paga com dois jogadores, armas de fogo, dados de mundos antigos, uma medição de custo com 24 humanos hostis e 2 guardas; a API (identidade, reputação com limite e pagamento único, **rivalidade política**, ordens com prazo, precedência, prioridade, recarga e mod dono ausente, diálogo com token forjado, escolha repetida e jogador distante, tarefas com entrega, dois jogadores, morte do emissor, sequência e provedor ausente); e os encontros do Lazarus Events de ponta a ponta: **Rescue** (sucesso com recompensa, morte do sobrevivente e cancelamento), **Last Defense** (posição mantida com recompensa proporcional e barricada perdida) e **False Radio** (pagamento com e sem comida, blefe único, luta pela carga e o saqueador que vem fazer a exigência), **Military** (guarda da base, recepção por reputação e tarefa do perímetro com relatório e pagamento) e o tamanho das ondas, além da passagem concedida pela API; o colapso militar e o posto abandonado, o projeto vacina, o refúgio do Haven, os esconderijos de hostis (acampamento de desertores, gangue ao ar livre e em prédio, covil do Hollow), provas e recompensas de hostis, escolhas de prisioneiros, as skins dos grupos, os **ninhos de zumbis** e a zona infestada, as **zonas de gás** (máscara, hazmat e NPCs que fogem), a **quarentena militar** (cena, limpeza do cômodo, rádio e pagamento) e a ponte com o **CityWorld** sem o mod instalado.
 
 ---
 
