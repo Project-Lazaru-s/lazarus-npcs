@@ -1130,6 +1130,164 @@ public final class EventsScenarioGameTests {
         h.succeed();
     }
 
+    // ---- Hostile hideouts (hostiles V1, phase 3)
+
+    private static List<Mob> hideout(GameTestHelper h, String type, UUID encounter) {
+        Object placed = call("LazarusEvents", "place", new Class<?>[]{ServerLevel.class, BlockPos.class, String.class, int.class,
+                boolean.class, UUID.class}, h.getLevel(), h.absolutePos(new BlockPos(6, 2, 6)), type, 0, true, encounter);
+        h.assertTrue((boolean) placed, type + " placed");
+        return h.getLevel().getEntitiesOfClass(Mob.class, new AABB(h.absolutePos(new BlockPos(6, 2, 6))).inflate(28),
+                mob -> mob.getTags().contains("lazarusevents:" + encounter));
+    }
+
+    @GameTest(template = "arena", batch = "events_hideout_weights", timeoutTicks = 20)
+    public static void hideoutsAppearWithTheCollapse(GameTestHelper h) {
+        Class<?>[] types = {int.class, int.class, int.class};
+        double[] early = (double[]) call("HostileHideouts", "weights", types, 3, 21, 36);
+        double[] gangs = (double[]) call("HostileHideouts", "weights", types, 10, 21, 36);
+        double[] late = (double[]) call("HostileHideouts", "weights", types, 40, 21, 36);
+        h.assertTrue(early[0] == 0 && early[1] == 0, "nothing before day 6");
+        h.assertTrue(gangs[0] == 0 && gangs[1] == 2, "gang hideouts from day 6, deserter camps not yet");
+        h.assertTrue(late[0] == 1.5 && late[1] == 2, "deserter camps grow with the collapse");
+        h.succeed();
+    }
+
+    @GameTest(template = "arena", batch = "events_hideout_deserters", timeoutTicks = 40)
+    public static void deserterCampIsHeldByArmedDeserters(GameTestHelper h) {
+        UUID encounter = UUID.randomUUID();
+        List<Mob> occupants = hideout(h, "deserter_camp", encounter);
+        h.assertTrue(occupants.size() >= 3 && occupants.stream().allMatch(m -> "soldier".equals(HumanEncounters.kind(m))),
+                "three or four deserters: " + occupants.size());
+        h.assertTrue(occupants.stream().allMatch(m -> NpcApi.assignment(m).map(a -> a.owner().toString()
+                .equals("lazarusevents:hostile_hideout") && a.order() == ScenarioOrder.GUARD_AREA).orElse(false)), "they guard the camp");
+        h.assertTrue(occupants.stream().allMatch(NpcGuns::armed), "deserters are armed");
+        boolean log = false;
+        AABB area = new AABB(h.absolutePos(new BlockPos(6, 2, 6))).inflate(28);
+        for (BlockPos pos : BlockPos.betweenClosed(BlockPos.containing(area.minX, area.minY, area.minZ),
+                BlockPos.containing(area.maxX, area.maxY, area.maxZ)))
+            if (h.getLevel().getBlockEntity(pos) instanceof net.minecraft.world.level.block.entity.LecternBlockEntity lectern
+                    && lectern.getBook().is(net.minecraft.world.item.Items.WRITTEN_BOOK)) log = true;
+        h.assertTrue(log, "a deserter's note lies on the lectern");
+        h.killAllEntities();
+        h.succeed();
+    }
+
+    @GameTest(template = "arena", batch = "events_hideout_gang", timeoutTicks = 40)
+    public static void gangHideoutPaysTheWardensWhenCleared(GameTestHelper h) {
+        UUID encounter = UUID.randomUUID();
+        List<Mob> occupants = hideout(h, "gang_hideout", encounter);
+        h.assertTrue(occupants.size() >= 3 && occupants.stream().allMatch(m -> "looter".equals(HumanEncounters.kind(m))),
+                "three or four gang members: " + occupants.size());
+        BlockPos stashPos = h.absolutePos(new BlockPos(6, 2, 6));
+        net.minecraft.world.Container stash = (net.minecraft.world.Container) h.getLevel().getBlockEntity(stashPos);
+        ItemStack patch = stash.getItem(stash.getContainerSize() - 1);
+        h.assertTrue(patch.is(item("lazarusevents:gang_patch")) && patch.getOrCreateTag().getString("Gang")
+                .equals(com.lazarus.npcs.api.HostileGroups.gang(h.getLevel(), stashPos)), "the stash holds the gang's patch");
+        try {
+            Class<?> dataType = Class.forName("com.lazarus.events.EventData");
+            Method get = dataType.getDeclaredMethod("get", ServerLevel.class);
+            get.setAccessible(true);
+            Object data = get.invoke(null, h.getLevel());
+            Method add = dataType.getDeclaredMethod("add", UUID.class, String.class, BlockPos.class, long.class);
+            add.setAccessible(true);
+            add.invoke(data, encounter, "gang_hideout", stashPos, h.getLevel().getGameTime());
+            ServerPlayer player = NpcGameTests.player(h, 10, 10);
+            Class<?>[] tick = {ServerLevel.class, dataType};
+            call("HostileHideouts", "tick", tick, h.getLevel(), data);
+            h.assertTrue(NpcReputation.get(player, "wardens") == 0, "nothing while they live");
+            occupants.forEach(Mob::kill);
+            call("HostileHideouts", "tick", tick, h.getLevel(), data);
+            h.assertTrue(NpcReputation.get(player, "wardens") == 2, "cleared: +2 Wardens");
+            Field list = dataType.getDeclaredField("encounters");
+            list.setAccessible(true);
+            Field idField = Class.forName("com.lazarus.events.EventData$Encounter").getDeclaredField("id");
+            idField.setAccessible(true);
+            for (Object entry : (List<?>) list.get(data))
+                h.assertTrue(!encounter.equals(idField.get(entry)), "the hideout ends");
+            done(h, player);
+        } catch (ReflectiveOperationException failure) {
+            throw new IllegalStateException(failure);
+        }
+        h.succeed();
+    }
+
+    // ---- Gang hideout inside a building
+
+    private static Object buildingAttempt(GameTestHelper h, ServerPlayer player) throws ReflectiveOperationException {
+        Class<?> dataType = Class.forName("com.lazarus.events.EventData");
+        Method get = dataType.getDeclaredMethod("get", ServerLevel.class);
+        get.setAccessible(true);
+        Object data = get.invoke(null, h.getLevel());
+        return call("LazarusEvents", "attempt", new Class<?>[]{ServerLevel.class, ServerPlayer.class, String.class,
+                boolean.class, boolean.class, dataType}, h.getLevel(), player, "gang_building_hideout", true, true, data);
+    }
+
+    private static boolean success(Object outcome) throws ReflectiveOperationException {
+        Method success = outcome.getClass().getDeclaredMethod("success");
+        success.setAccessible(true);
+        return (boolean) success.invoke(outcome);
+    }
+
+    @GameTest(template = "arena", batch = "events_hideout_building", timeoutTicks = 40)
+    public static void gangMovesIntoTheRoomAroundThePlayer(GameTestHelper h) {
+        loadedArena(h, () -> {
+            // A 7 x 7 room with a doorway, built in the arena.
+            for (int x = 10; x <= 18; x++) for (int z = 10; z <= 18; z++) {
+                h.setBlock(new BlockPos(x, 5, z), Blocks.STONE_BRICKS);
+                if (x == 10 || x == 18 || z == 10 || z == 18)
+                    for (int y = 2; y <= 4; y++) h.setBlock(new BlockPos(x, y, z), Blocks.STONE_BRICKS);
+            }
+            h.setBlock(new BlockPos(14, 2, 10), Blocks.AIR);
+            h.setBlock(new BlockPos(14, 3, 10), Blocks.AIR);
+            ServerPlayer outside = NpcGameTests.player(h, 4, 4);
+            ServerPlayer inside = NpcGameTests.player(h, 14, 15);
+            try {
+                h.assertTrue(!success(buildingAttempt(h, outside)), "refused outdoors");
+                h.assertTrue(success(buildingAttempt(h, inside)), "placed in the room around the player");
+            } catch (ReflectiveOperationException failure) {
+                throw new IllegalStateException(failure);
+            }
+            AABB room = new AABB(h.absolutePos(new BlockPos(11, 2, 11)), h.absolutePos(new BlockPos(17, 3, 17))).inflate(0.5);
+            List<Mob> gang = h.getLevel().getEntitiesOfClass(Mob.class, room, m -> "looter".equals(HumanEncounters.kind(m))
+                    && NpcApi.assignment(m).map(a -> a.owner().toString().equals("lazarusevents:hostile_hideout")).orElse(false));
+            List<Mob> looters = h.getLevel().getEntitiesOfClass(Mob.class, room.inflate(12), m -> "looter".equals(HumanEncounters.kind(m)));
+            h.assertTrue(gang.size() >= 3, "three or four gang members inside: " + gang.size() + " of "
+                    + looters.stream().map(m -> m.blockPosition().subtract(h.absolutePos(BlockPos.ZERO)).toShortString()
+                    + NpcApi.assignment(m).map(a -> a.owner().toString()).orElse("-")).toList());
+            String gangName = null;
+            boolean stash = false, walls = true;
+            for (BlockPos pos : BlockPos.betweenClosed(h.absolutePos(new BlockPos(10, 2, 10)), h.absolutePos(new BlockPos(18, 4, 18)))) {
+                var block = h.getLevel().getBlockEntity(pos);
+                if (block instanceof net.minecraft.world.level.block.entity.SignBlockEntity sign)
+                    gangName = sign.getFrontText().getMessage(0, false).getString();
+                if (block instanceof net.minecraft.world.level.block.entity.BarrelBlockEntity barrel
+                        && barrel.getItem(barrel.getContainerSize() - 1).is(item("lazarusevents:gang_patch"))) stash = true;
+                BlockPos rel = pos.subtract(h.absolutePos(BlockPos.ZERO));
+                boolean wall = rel.getX() == 10 || rel.getX() == 18 || rel.getZ() == 10 || rel.getZ() == 18;
+                boolean door = rel.getX() == 14 && rel.getZ() == 10;
+                if (wall && !door && !h.getLevel().getBlockState(pos).is(Blocks.STONE_BRICKS)) walls = false;
+            }
+            h.assertTrue(com.lazarus.npcs.api.HostileGroups.gang(h.getLevel(), h.absolutePos(new BlockPos(14, 2, 14)))
+                    .toUpperCase().equals(gangName), "turf sign names the gang: " + gangName);
+            h.assertTrue(stash, "the stash barrel holds the gang's patch");
+            h.assertTrue(walls, "the building itself is untouched");
+            h.getLevel().getServer().getPlayerList().remove(outside);
+            done(h, inside);
+            h.succeed();
+        });
+    }
+
+    @GameTest(template = "arena", batch = "events_radio_text", timeoutTicks = 20)
+    public static void radioChatterStandsOut(GameTestHelper h) {
+        net.minecraft.network.chat.Component text = (net.minecraft.network.chat.Component) call("LazarusEvents", "radioText",
+                new Class<?>[]{String.class, BlockPos.class}, "Shots fired", new BlockPos(1213, 64, -362));
+        String plain = text.getString();
+        h.assertTrue(plain.startsWith("[RADIO] ") && plain.contains("Shots fired") && plain.endsWith("near X 1225, Z -350"),
+                "tagged radio line with rounded location: " + plain);
+        h.assertTrue(text.getSiblings().get(0).getStyle().isBold(), "bold radio tag");
+        h.succeed();
+    }
+
     @GameTest(template = "arena", batch = "events_passage_api", timeoutTicks = 20)
     public static void passageOnlyForTollTakers(GameTestHelper h) {
         ServerPlayer player = NpcGameTests.player(h, 10, 10);

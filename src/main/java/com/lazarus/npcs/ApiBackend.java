@@ -129,9 +129,10 @@ final class ApiBackend implements NpcApi.Backend {
         if (owner == null || encounterId == null || !NpcScenarios.current(npc)
                 .filter(a -> owner.equals(a.owner()) && encounterId.equals(a.encounterId())).isPresent())
             return ApiResult.fail(ApiResult.Status.INVALID_CONTEXT, "actor is not assigned to this scenario");
-        String faction = NpcIdentity.faction(npc);
-        if (NpcFactions.get(faction) == null || !NpcFactions.get(faction).professions())
-            return ApiResult.fail(ApiResult.Status.UNSUPPORTED_NPC, "professional faction survivor required");
+        String faction = NpcIdentity.faction(npc), kind = HumanEncounters.kind(npc);
+        boolean hostile = "looter".equals(kind) || "soldier".equals(kind); // armed from their own arsenal
+        if (!hostile && (NpcFactions.get(faction) == null || !NpcFactions.get(faction).professions()))
+            return ApiResult.fail(ApiResult.Status.UNSUPPORTED_NPC, "professional faction survivor or armed hostile required");
         return NpcGuns.armScenario(npc) ? ApiResult.ok("scenario actor armed")
                 : ApiResult.fail(ApiResult.Status.INVALID_CONTEXT, "no compatible faction weapon is loaded");
     }

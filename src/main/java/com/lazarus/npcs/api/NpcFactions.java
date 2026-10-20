@@ -55,7 +55,7 @@ public final class NpcFactions {
     private NpcFactions() {}
 
     public static List<Definition> all() { return ALL; }
-    public static Definition get(String id) { return BY_ID.get(id); }
+    public static Definition get(String id) { return id == null ? null : BY_ID.get(id); }
     public static boolean rivals(String first, String second) {
         Definition definition = get(first);
         return definition != null && definition.rivals().contains(second);
