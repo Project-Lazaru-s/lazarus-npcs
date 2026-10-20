@@ -523,7 +523,8 @@ public final class EventsScenarioGameTests {
             h.assertTrue(base != null, faction + " template placed");
             Field roster = base.getClass().getDeclaredField("staff");
             roster.setAccessible(true);
-            @SuppressWarnings("unchecked") List<UUID> ids = (List<UUID>) roster.get(base);
+            @SuppressWarnings("unchecked") List<UUID> ids = ((List<UUID>) roster.get(base)).stream()
+                    .filter(id -> !id.equals(new UUID(0, 0))).toList(); // empty guest bunks stay vacant
             h.assertTrue(ids.size() == (refuge ? 6 : 10) && ids.stream().allMatch(id -> h.getLevel().getEntity(id) instanceof Mob),
                     faction + " garrison spawned: " + ids.stream().map(id -> String.valueOf(h.getLevel().getEntity(id))).toList());
             for (int slot = 1; slot <= (refuge ? 1 : 2); slot++) {
@@ -962,6 +963,97 @@ public final class EventsScenarioGameTests {
                 "ordinary zombies drop no samples");
         done(h, player);
         h.succeed();
+    }
+
+    // ---- Haven refuge life (Haven/Military V1, phase 4)
+
+    @GameTest(template = "arena", batch = "events_haven_refuge_life", timeoutTicks = 60)
+    public static void refugeRequestsAndRescuedGuests(GameTestHelper h) {
+        loadedArena(h, () -> refugeLife(h));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void refugeLife(GameTestHelper h) {
+        ServerLevel level = h.getLevel();
+        try {
+            Class<?> dataType = Class.forName("com.lazarus.events.FactionBaseData");
+            Class<?> baseType = Class.forName("com.lazarus.events.FactionBaseData$Base");
+            Method get = dataType.getDeclaredMethod("get", ServerLevel.class);
+            get.setAccessible(true);
+            Object data = get.invoke(null, level);
+            Field basesField = dataType.getDeclaredField("bases");
+            basesField.setAccessible(true);
+            List<Object> bases = (List<Object>) basesField.get(data);
+            Field factionField = baseType.getDeclaredField("faction");
+            factionField.setAccessible(true);
+            // A real refuge in the test world is set aside so this one receives the guests.
+            List<Object> setAside = new java.util.ArrayList<>();
+            for (Object existing : List.copyOf(bases))
+                if ("haven".equals(factionField.get(existing))) { setAside.add(existing); bases.remove(existing); }
+            Method add = dataType.getDeclaredMethod("add", String.class, BlockPos.class, int.class, String.class);
+            add.setAccessible(true);
+            Object base = add.invoke(data, "haven", h.absolutePos(new BlockPos(16, 2, 16)), 0, "test");
+            Method staff = Class.forName("com.lazarus.events.FactionBases").getDeclaredMethod("staff", ServerLevel.class, dataType, baseType);
+            staff.setAccessible(true);
+            staff.invoke(null, level, data, base);
+            Field rosterField = baseType.getDeclaredField("staff");
+            rosterField.setAccessible(true);
+            List<UUID> roster = (List<UUID>) rosterField.get(base);
+            h.assertTrue(roster.size() == 10 && roster.subList(6, 10).stream().allMatch(id -> id.equals(new UUID(0, 0))),
+                    "guest bunks start empty");
+            Mob leader = (Mob) level.getEntity(roster.get(0));
+            BlockPos at = leader.blockPosition().subtract(h.absolutePos(BlockPos.ZERO));
+            ServerPlayer player = NpcGameTests.player(h, at.getX() + 1, at.getZ());
+
+            // Request of the day: offered by the leader, delivered, reported, once per day.
+            h.assertTrue(NpcDialogues.open(player, leader, DialogueTrigger.INTERACT, null)
+                    && NpcDialogues.session(player).options().contains("request"), "the leader asks for help");
+            choose(player, leader, NpcDialogues.session(player).options().indexOf("request"));
+            choose(player, leader, 0); // Accept
+            var task = NpcApi.encounterTask(player).orElseThrow();
+            h.assertTrue(task.state() == TaskState.ACTIVE && task.taskId().getPath().startsWith("haven_request_"), "request accepted");
+            Object request = call("HavenRefuge", "today", new Class<?>[]{baseType, long.class}, base, level.getDayTime() / 24_000L);
+            Method wanted = request.getClass().getDeclaredMethod("wanted");
+            wanted.setAccessible(true);
+            for (ItemStack stack : (List<ItemStack>) wanted.invoke(request)) player.getInventory().add(stack.copy());
+            int before = NpcReputation.get(player, "haven");
+            h.assertTrue(NpcDialogues.open(player, leader, DialogueTrigger.INTERACT, null)
+                    && NpcDialogues.session(player).dialogue().toString().equals("lazarusnpcs:task_giver"), "hand-over dialogue");
+            choose(player, leader, 0); // Deliver
+            h.assertTrue(NpcDialogues.open(player, leader, DialogueTrigger.INTERACT, null), "report dialogue");
+            choose(player, leader, 0); // Report
+            h.assertTrue(NpcApi.encounterTask(player).map(t -> t.state() == TaskState.COMPLETED).orElse(false), "request completed");
+            h.assertTrue(NpcReputation.get(player, "haven") > before, "Haven reputation rises");
+            h.assertTrue((boolean) call("HavenRefuge", "doneToday", new Class<?>[]{ServerPlayer.class}, player), "done for today");
+            call("HavenRefuge", "offer", new Class<?>[]{ServerPlayer.class, net.minecraft.world.entity.LivingEntity.class, baseType},
+                    player, leader, base);
+            h.assertTrue(NpcApi.encounterTask(player).map(t -> t.state() == TaskState.COMPLETED).orElse(false),
+                    "no second request on the same day");
+
+            // A rescued survivor moves in as a named guest.
+            Mob rescued = NpcGameTests.npc(h, "survivor_5", 6, 6);
+            String name = NpcApi.identity(rescued).orElseThrow().name();
+            call("HavenRefuge", "rescued", new Class<?>[]{ServerPlayer.class, Mob.class}, player, rescued);
+            h.assertTrue((int) call("HavenRefuge", "rescued", new Class<?>[]{ServerPlayer.class}, player) == 1, "rescue counted");
+            h.assertTrue(rescued.getPersistentData().getLong("LazarusEventsLeaveForRefuge") > 0, "the survivor sets off");
+            staff.invoke(null, level, data, base);
+            Mob guest = level.getEntity(roster.get(6)) instanceof Mob mob ? mob : null;
+            h.assertTrue(guest != null && guest != rescued && guest.getType() == rescued.getType()
+                    && NpcApi.identity(guest).map(v -> v.name().equals(name) && v.faction().equals("haven")).orElse(false)
+                    && guest.getTags().contains("lazarusevents:base_guest"), "guest " + name + " lives at the refuge: " + guest);
+            h.assertTrue(NpcProfessions.assigned(guest).isEmpty(), "guests have no assigned profession");
+            guest.kill();
+            Field guestsField = baseType.getDeclaredField("guests");
+            guestsField.setAccessible(true);
+            h.assertTrue(((java.util.Map<String, ?>) guestsField.get(base)).isEmpty(), "a guest who dies frees the bunk");
+
+            bases.remove(base);
+            bases.addAll(setAside);
+            done(h, player);
+            h.succeed();
+        } catch (ReflectiveOperationException failure) {
+            throw new IllegalStateException(failure);
+        }
     }
 
     @GameTest(template = "arena", batch = "events_passage_api", timeoutTicks = 20)

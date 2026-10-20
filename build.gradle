@@ -146,7 +146,7 @@ dependencies {
     testCompileOnly fg.deobf("blank:tacz:1.1.8")
     runtimeOnly fg.deobf("blank:tacz:1.1.8")
     // Lazarus Events (API consumer) and its required Dyairdrop, only for the end-to-end GameTests.
-    runtimeOnly fg.deobf("blank:lazarusevents:0.15.0")
+    runtimeOnly fg.deobf("blank:lazarusevents:0.16.0")
     runtimeOnly fg.deobf("blank:dyairdrop:1.0.0")
     runtimeOnly fg.deobf("blank:geckolib:4.8.4") // Dyairdrop needs it at runtime despite declaring it optional
     // Modern Mayhem armor for the faction loadouts (GameTests check the pieces resolve; the profile ships the mod).
