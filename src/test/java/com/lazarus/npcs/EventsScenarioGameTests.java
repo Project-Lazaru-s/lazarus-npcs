@@ -1825,6 +1825,110 @@ public final class EventsScenarioGameTests {
         h.succeed();
     }
 
+    // ---- Helicopter crash (territory events V1, phase T4)
+
+    @GameTest(template = "arena", batch = "events_heli_crash", timeoutTicks = 70)
+    public static void helicopterCrashHasWreckLootPilotAndTimedSmoke(GameTestHelper h) {
+        loadedArena(h, () -> {
+            ServerLevel level = h.getLevel();
+            BlockPos center = h.absolutePos(new BlockPos(16, 2, 16));
+            for (int x = 11; x <= 21; x++) for (int z = 11; z <= 21; z++)
+                for (int y = 2; y <= 6; y++) h.setBlock(new BlockPos(x, y, z), Blocks.AIR);
+            h.assertTrue((boolean) call("HeliCrash", "flat", new Class<?>[]{ServerLevel.class, BlockPos.class}, level, center),
+                    "the flat arena accepts a crash despite having no sky");
+            h.setBlock(new BlockPos(20, 3, 16), Blocks.STONE_BRICKS);
+            h.assertTrue(!(boolean) call("HeliCrash", "flat", new Class<?>[]{ServerLevel.class, BlockPos.class}, level, center),
+                    "a solid obstacle rejects the crash site");
+            h.setBlock(new BlockPos(20, 3, 16), Blocks.AIR);
+            h.setBlock(new BlockPos(13, 2, 13), Blocks.DIRT);
+            h.setBlock(new BlockPos(18, 2, 19), Blocks.TALL_GRASS);
+            h.assertTrue((boolean) call("HeliCrash", "flat", new Class<?>[]{ServerLevel.class, BlockPos.class}, level, center),
+                    "a one-block bump of dirt and tall grass do not refuse the site");
+            java.util.Set<BlockPos> rotated = new java.util.HashSet<>();
+            for (int turn = 0; turn < 4; turn++) rotated.add((BlockPos) call("HeliCrash", "at",
+                    new Class<?>[]{BlockPos.class, int.class, int.class, int.class, int.class}, center, turn, 1, 0, 2));
+            h.assertTrue(rotated.size() == 4, "the wreck rotates into four distinct directions");
+            UUID id = UUID.randomUUID();
+            net.minecraft.nbt.CompoundTag memory = (net.minecraft.nbt.CompoundTag) call("HeliCrash", "place",
+                    new Class<?>[]{ServerLevel.class, BlockPos.class, int.class, int.class, UUID.class, boolean.class},
+                    level, center, 1, 2, id, true);
+            h.assertTrue(memory != null, "the wreck is placed");
+            BlockPos fire = BlockPos.of(memory.getLong("Fire"));
+            h.assertTrue(level.getBlockState(fire).is(Blocks.FIRE) && level.getBlockState(fire.below()).is(Blocks.NETHERRACK),
+                    "fire burns only over hidden netherrack");
+            h.assertTrue(memory.getLongArray("Smoke").length == 2, "two signal campfires are remembered");
+            for (long packed : memory.getLongArray("Smoke")) {
+                BlockPos camp = BlockPos.of(packed);
+                h.assertTrue(level.getBlockState(camp).is(Blocks.CAMPFIRE)
+                        && level.getBlockState(camp).getValue(net.minecraft.world.level.block.CampfireBlock.SIGNAL_FIRE)
+                        && level.getBlockState(camp.below()).is(Blocks.HAY_BLOCK), "signal smoke stands on hay");
+            }
+            int steel = 0, glass = 0, blades = 0;
+            for (BlockPos pos : BlockPos.betweenClosed(center.offset(-5, 0, -5), center.offset(5, 3, 5))) {
+                if (level.getBlockState(pos).is(Blocks.IRON_BLOCK)) steel++;
+                if (level.getBlockState(pos).is(Blocks.GLASS_PANE)) glass++;
+                if (level.getBlockState(pos).is(Blocks.IRON_BARS)) blades++;
+            }
+            h.assertTrue(steel >= 8 && glass >= 3 && blades >= 10, "steel cabin, shattered glass and rotors: " + steel + "/" + glass + "/" + blades);
+            for (String loot : new String[] {"weaponairdrop2", "largeairdrop2"}) {
+                BlockPos crate = (BlockPos) call("HeliCrash", "at", new Class<?>[]{BlockPos.class, int.class, int.class, int.class, int.class},
+                        center, 1, loot.startsWith("weapon") ? 1 : -2, 0, loot.startsWith("weapon") ? -3 : 3);
+                h.assertTrue(level.getBlockEntity(crate) instanceof net.minecraft.world.level.block.entity.RandomizableContainerBlockEntity barrel
+                        && barrel.saveWithoutMetadata().getString("LootTable").equals("dyairdrop:chests/" + loot),
+                        "military crate has " + loot);
+            }
+            List<Mob> infected = level.getEntitiesOfClass(Mob.class, new AABB(center).inflate(10),
+                    mob -> mob.getTags().contains("lazarusevents:" + id) && mob.getTags().contains("lazarusevents:heli_horde"));
+            h.assertTrue(infected.size() >= 3 && infected.size() <= 4 && infected.stream().allMatch(m -> !m.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.HEAD).isEmpty()),
+                    "three or four uniformed infected guard the crash: " + infected.size());
+            Mob pilot = (Mob) level.getEntity(memory.getUUID("Pilot"));
+            h.assertTrue(pilot != null && pilot.getTags().contains("lazarusevents:" + id)
+                    && NpcApi.assignment(pilot).map(a -> a.order() == ScenarioOrder.WAIT).orElse(false), "wounded pilot waits for rescue");
+            ServerPlayer player = NpcGameTests.player(h, 16, 18);
+            try {
+                Class<?> dataType = Class.forName("com.lazarus.events.EventData");
+                Method get = dataType.getDeclaredMethod("get", ServerLevel.class);
+                get.setAccessible(true);
+                Object data = get.invoke(null, level);
+                Method add = dataType.getDeclaredMethod("add", UUID.class, String.class, BlockPos.class, long.class);
+                add.setAccessible(true);
+                Object encounter = add.invoke(data, id, "heli_crash", center, level.getGameTime());
+                Class<?> encounterType = Class.forName("com.lazarus.events.EventData$Encounter");
+                Field stateField = encounterType.getDeclaredField("data"), createdField = encounterType.getDeclaredField("created");
+                stateField.setAccessible(true);
+                createdField.setAccessible(true);
+                net.minecraft.nbt.CompoundTag state = (net.minecraft.nbt.CompoundTag) stateField.get(encounter);
+                state.merge(memory);
+                var offered = NpcApi.offerTask(player, pilot, new ResourceLocation("lazarusevents", "heli_pilot_rescue"), id,
+                        net.minecraft.core.GlobalPos.of(level.dimension(), center.offset(20, 0, 0)));
+                h.assertTrue(offered.ok() && NpcApi.encounterTask(player).isPresent(), "pilot offers an escort task: " + offered.message());
+                while (infected.size() < 12) {
+                    Mob extra = (Mob) call("LazarusEvents", "spawn", new Class<?>[]{ServerLevel.class, BlockPos.class, String.class, UUID.class, boolean.class},
+                            level, center.offset(5, 0, 5), "minecraft:zombie", id, false);
+                    h.assertTrue(extra != null, "extra horde member spawns");
+                    extra.addTag("lazarusevents:heli_horde");
+                    infected.add(extra);
+                }
+                state.putLong("NextHorde", level.getGameTime());
+                call("HeliCrash", "tick", new Class<?>[]{ServerLevel.class, dataType}, level, data);
+                h.assertTrue(level.getEntitiesOfClass(Mob.class, new AABB(center).inflate(64),
+                        mob -> mob.isAlive() && mob.getTags().contains("lazarusevents:" + id)
+                                && mob.getTags().contains("lazarusevents:heli_horde")).size() == 12, "horde stops at 12 alive");
+                createdField.setLong(encounter, level.getGameTime() - 24_000);
+                call("HeliCrash", "tick", new Class<?>[]{ServerLevel.class, dataType}, level, data);
+                h.assertTrue(level.getBlockState(fire).isAir(), "fire goes out after one day");
+                createdField.setLong(encounter, level.getGameTime() - 48_000);
+                call("HeliCrash", "tick", new Class<?>[]{ServerLevel.class, dataType}, level, data);
+                for (long packed : memory.getLongArray("Smoke")) h.assertTrue(!level.getBlockState(BlockPos.of(packed))
+                        .getValue(net.minecraft.world.level.block.CampfireBlock.LIT), "signal smoke goes out after two days");
+            } catch (ReflectiveOperationException failure) {
+                throw new IllegalStateException(failure);
+            }
+            done(h, player);
+            h.succeed();
+        });
+    }
+
     // ---- Lived-in hideouts (territory events V1, phase T3+)
 
     @SuppressWarnings("unchecked")
