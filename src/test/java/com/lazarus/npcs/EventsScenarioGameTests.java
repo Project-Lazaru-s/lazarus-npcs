@@ -1918,6 +1918,66 @@ public final class EventsScenarioGameTests {
         h.succeed();
     }
 
+    @GameTest(template = "arena", batch = "events_hideout_rooms", timeoutTicks = 40)
+    public static void gangHideoutSpreadsThroughDoorsWithClearWalkways(GameTestHelper h) {
+        loadedArena(h, () -> {
+            // Two rooms sharing a wall with a door between them; the first has a doorway to the street.
+            for (int x = 10; x <= 24; x++) for (int z = 10; z <= 18; z++) {
+                h.setBlock(new BlockPos(x, 5, z), Blocks.STONE_BRICKS);
+                if (x == 10 || x == 18 || x == 24 || z == 10 || z == 18)
+                    for (int y = 2; y <= 4; y++) h.setBlock(new BlockPos(x, y, z), Blocks.STONE_BRICKS);
+            }
+            h.setBlock(new BlockPos(14, 2, 10), Blocks.AIR);
+            h.setBlock(new BlockPos(14, 3, 10), Blocks.AIR);
+            var door = Blocks.OAK_DOOR.defaultBlockState().setValue(net.minecraft.world.level.block.DoorBlock.FACING, net.minecraft.core.Direction.EAST);
+            h.setBlock(new BlockPos(18, 2, 14), door);
+            h.setBlock(new BlockPos(18, 3, 14), door.setValue(net.minecraft.world.level.block.DoorBlock.HALF,
+                    net.minecraft.world.level.block.state.properties.DoubleBlockHalf.UPPER));
+            h.setBlock(new BlockPos(12, 2, 16), Blocks.CHEST); // furniture the gang clears out
+            ServerPlayer inside = NpcGameTests.player(h, 14, 15);
+            try {
+                h.assertTrue(success(buildingAttempt(h, inside)), "placed in the rooms around the player");
+            } catch (ReflectiveOperationException failure) {
+                throw new IllegalStateException(failure);
+            }
+            ServerLevel level = h.getLevel();
+            java.util.Set<String> kitBlocks = java.util.Set.of("crafting_table", "furnace", "smoker", "blast_furnace", "grindstone", "smithing_table",
+                    "fletching_table", "campfire", "red_bed", "gray_bed", "brown_bed", "blue_bed", "light_gray_bed", "white_bed", "green_bed",
+                    "ladder", "note_block", "military_communication_radio", "sandbagbarrier", "wooden_crate", "military_crate", "cardboard_box",
+                    "spruce_stairs", "red_petrol_barrel", "petrol_barrel", "toxic_waste_barrel", "trash_bin");
+            int[] furnished = new int[2];
+            for (BlockPos pos : BlockPos.betweenClosed(h.absolutePos(new BlockPos(11, 2, 11)), h.absolutePos(new BlockPos(23, 4, 17)))) {
+                String id = net.minecraftforge.registries.ForgeRegistries.BLOCKS.getKey(level.getBlockState(pos).getBlock()).getPath();
+                if (kitBlocks.contains(id)) furnished[pos.getX() < h.absolutePos(new BlockPos(18, 0, 0)).getX() ? 0 : 1]++;
+            }
+            h.assertTrue(furnished[0] > 0 && furnished[1] > 0, "both rooms are furnished: " + furnished[0] + " / " + furnished[1]);
+            h.assertTrue(level.getBlockState(h.absolutePos(new BlockPos(18, 2, 14))).getBlock() instanceof net.minecraft.world.level.block.DoorBlock,
+                    "the door between the rooms stays");
+            h.assertTrue(!level.getBlockState(h.absolutePos(new BlockPos(12, 2, 16))).is(Blocks.CHEST), "the old furniture is cleared");
+            // From the street doorway, through the door, to the back room: always a way through.
+            java.util.Set<BlockPos> seen = new java.util.HashSet<>();
+            java.util.ArrayDeque<BlockPos> queue = new java.util.ArrayDeque<>(List.of(h.absolutePos(new BlockPos(14, 2, 11))));
+            seen.addAll(queue);
+            boolean reached = false;
+            while (!queue.isEmpty()) {
+                BlockPos at = queue.poll();
+                if (at.getX() > h.absolutePos(new BlockPos(19, 0, 0)).getX()) { reached = true; break; }
+                for (net.minecraft.core.Direction side : net.minecraft.core.Direction.Plane.HORIZONTAL) {
+                    BlockPos next = at.relative(side);
+                    var state = level.getBlockState(next);
+                    boolean open = state.getBlock() instanceof net.minecraft.world.level.block.DoorBlock
+                            || state.getCollisionShape(level, next).isEmpty() && level.getBlockState(next.above()).getCollisionShape(level, next.above()).isEmpty();
+                    if (open && seen.add(next) && next.getX() >= h.absolutePos(new BlockPos(11, 0, 0)).getX()
+                            && next.getZ() >= h.absolutePos(new BlockPos(0, 0, 11)).getZ() && next.getZ() <= h.absolutePos(new BlockPos(0, 0, 17)).getZ())
+                        queue.add(next);
+                }
+            }
+            h.assertTrue(reached, "a clear walkway leads through the door to the back room");
+            done(h, inside);
+            h.succeed();
+        });
+    }
+
     @GameTest(template = "arena", batch = "events_passage_api", timeoutTicks = 20)
     public static void passageOnlyForTollTakers(GameTestHelper h) {
         ServerPlayer player = NpcGameTests.player(h, 10, 10);
