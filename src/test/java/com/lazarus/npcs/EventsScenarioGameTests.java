@@ -1850,6 +1850,43 @@ public final class EventsScenarioGameTests {
         h.succeed();
     }
 
+    @SuppressWarnings("unchecked")
+    @GameTest(template = "arena", batch = "events_hideout_kit_catalogue", timeoutTicks = 20)
+    public static void everyHideoutKitPlacesAndEachUseHasVariety(GameTestHelper h) {
+        ServerLevel level = h.getLevel();
+        for (int z : new int[] {1, 9, 17, 25}) for (int x = 0; x <= 31; x++) for (int y = 2; y <= 7; y++) h.setBlock(new BlockPos(x, y, z), Blocks.STONE_BRICKS);
+        try {
+            java.util.Map<String, Object> kits = (java.util.Map<String, Object>) call("HideoutKits", "all",
+                    new Class<?>[]{net.minecraft.server.MinecraftServer.class}, level.getServer());
+            Class<?> kitType = Class.forName("com.lazarus.events.HideoutKits$Kit"), spotType = Class.forName("com.lazarus.events.HideoutKits$Spot");
+            Method tags = kitType.getDeclaredMethod("tags"), width = kitType.getDeclaredMethod("width");
+            tags.setAccessible(true);
+            width.setAccessible(true);
+            var spotOf = spotType.getDeclaredConstructor(BlockPos.class, net.minecraft.core.Direction.class);
+            spotOf.setAccessible(true);
+            for (String use : new String[] {"workshop", "kitchen", "dorm", "storage", "guard", "camp"}) {
+                long variants = kits.values().stream().filter(kit -> {
+                    try { return ((java.util.Set<String>) tags.invoke(kit)).contains(use); } catch (ReflectiveOperationException e) { return false; }
+                }).count();
+                h.assertTrue(variants >= 3, use + " has at least 3 kits: " + variants);
+            }
+            int x = 1, row = 0;
+            for (var entry : kits.entrySet()) {
+                int w = (int) width.invoke(entry.getValue());
+                if (x + w > 31) { x = 1; row++; }
+                h.assertTrue(row < 4, "room for every kit in the arena");
+                Object spot = spotOf.newInstance(h.absolutePos(new BlockPos(x, 2, 2 + row * 8)), net.minecraft.core.Direction.SOUTH);
+                int placed = (int) call("HideoutKits", "place", new Class<?>[]{ServerLevel.class, kitType, spotType, int.class, java.util.Set.class},
+                        level, entry.getValue(), spot, 1, new java.util.HashSet<BlockPos>());
+                h.assertTrue(placed > 0, "kit " + entry.getKey() + " places blocks");
+                x += w + 1;
+            }
+        } catch (ReflectiveOperationException failure) {
+            throw new IllegalStateException(failure);
+        }
+        h.succeed();
+    }
+
     @GameTest(template = "arena", batch = "events_passage_api", timeoutTicks = 20)
     public static void passageOnlyForTollTakers(GameTestHelper h) {
         ServerPlayer player = NpcGameTests.player(h, 10, 10);
