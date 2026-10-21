@@ -60,6 +60,23 @@ public final class NpcFactionTest {
         assert HumanSurrender.chance("looter", 0.3f, 3, 2, 0) == 0.225 : "not outnumbered halves the chance";
         assert HumanSurrender.chance("soldier", 0.3f, 2, 2, 0) < HumanSurrender.chance("looter", 0.3f, 2, 2, 0);
         assert HumanSurrender.chance("looter", 0.1f, 1, 4, 3) <= 0.8 : "never guaranteed";
+        // Negotiation skills: Intimidação adds 15% only when a surrender is possible at all, still capped at 80%
+        assert Math.abs(HumanSurrender.chance("looter", 0.3f, 2, 2, 0, true) - 0.6) < 1e-9;
+        assert HumanSurrender.chance("cannibal", 0.1f, 1, 3, 2, true) == 0 : "cannibals still never surrender";
+        assert HumanSurrender.chance("looter", 0.5f, 1, 3, 0, true) == 0 : "healthy NPCs still do not surrender";
+        assert HumanSurrender.chance("looter", 0.1f, 1, 4, 3, true) == 0.8 : "never guaranteed";
+        // Lábia -1, Pechincha -10% (at least 1)
+        assert NpcMerchant.skillDiscount(12, false, false) == 0;
+        assert NpcMerchant.skillDiscount(12, true, false) == 1;
+        assert NpcMerchant.skillDiscount(12, true, true) == 2 && NpcMerchant.skillDiscount(30, true, true) == 4;
+        // S6: every TaCZ gun type has an Armeiro branch; unknown types fall under Fuzis
+        for (String type : new String[] {"pistol", "smg", "shotgun", "rifle", "sniper", "mg", "rpg"})
+            assert GunSkillLock.BRANCHES.containsKey(type) : type;
+        assert GunSkillLock.branch("pistol")[0].equals("lazarus_arma_pistola");
+        assert GunSkillLock.branch("flamethrower") == GunSkillLock.branch("rifle");
+        for (String type : new String[] {"grip", "stock", "scope", "laser", "muzzle", "extended_mag"})
+            assert GunSkillLock.ATTACHMENTS.containsKey(type) : type;
+        assert GunSkillLock.attachmentBranch("none") == GunSkillLock.attachmentBranch("scope");
         assert NpcReputation.penaltyDue(null, 50) && !NpcReputation.penaltyDue(100L, 900) && NpcReputation.penaltyDue(100L, 1_300);
         java.util.Map<String, Integer> counts = new java.util.HashMap<>();
         java.util.Random random = new java.util.Random(7);

@@ -54,6 +54,8 @@ final class NpcContracts {
     static final long GUARD_MAX_REMAINING = 72_000L; // renewals stack up to three days
     static final int[] GUARD_RADII = {6, 10, 14};
     static final int GUARDS_PER_PLAYER = 2;
+    /** Negotiation skill Voz de comando (Puffish Skills tag in the modpack): one more guard and 8-minute escorts. */
+    static final String TAG_COMMAND = "lazarus_comandante";
     static final int GUARDS_PER_SERVER = 12;
     static final int GUARD_REPUTATION = 10;
     static final double GUARD_HIRE_DISTANCE = 32;
@@ -200,13 +202,14 @@ final class NpcContracts {
             say(player, "Escort costs " + costText(ESCORT_COST) + ".");
             return;
         }
-        Contract c = create("escort", player, npc, ESCORT_DURATION);
+        boolean command = player.getTags().contains(TAG_COMMAND);
+        Contract c = create("escort", player, npc, command ? ESCORT_DURATION * 8 / 5 : ESCORT_DURATION);
         c.x = npc.getX();
         c.y = npc.getY();
         c.z = npc.getZ();
         store.byNpc.put(c.npc, c);
         store.setDirty();
-        say(player, "Escort hired for five minutes. The soldier keeps a few steps behind you, defends you and ends the contract if it loses you.");
+        say(player, "Escort hired for " + (command ? "eight" : "five") + " minutes. The soldier keeps a few steps behind you, defends you and ends the contract if it loses you.");
         NpcDialogue.action(player, npc, "service");
     }
 
@@ -250,8 +253,9 @@ final class NpcContracts {
             say(player, "This NPC is working for " + current.ownerName + ".");
             return;
         }
-        if (store.guards(player.getUUID()) >= GUARDS_PER_PLAYER) {
-            say(player, "You already have " + GUARDS_PER_PLAYER + " guards on duty.");
+        int guardLimit = GUARDS_PER_PLAYER + (player.getTags().contains(TAG_COMMAND) ? 1 : 0);
+        if (store.guards(player.getUUID()) >= guardLimit) {
+            say(player, "You already have " + guardLimit + " guards on duty.");
             return;
         }
         if (store.guards(null) >= GUARDS_PER_SERVER) {

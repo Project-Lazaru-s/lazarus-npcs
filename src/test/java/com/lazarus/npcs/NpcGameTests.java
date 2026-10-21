@@ -83,6 +83,31 @@ public final class NpcGameTests {
         });
     }
 
+    @GameTest(template = "arena", batch = "gun_skill_lock", timeoutTicks = 20)
+    public static void gunSmithNeedsTheArmeiroBranchOfTheGun(GameTestHelper h) {
+        ServerPlayer player = player(h, 10, 10);
+        ResourceLocation glock = new ResourceLocation("tacz", "gun/glock_17"), awp = new ResourceLocation("tacz", "gun/ai_awp");
+        ResourceLocation ammo = new ResourceLocation("tacz", "ammo/308");
+        var recipes = h.getLevel().getRecipeManager();
+        h.assertTrue(recipes.byKey(glock).isPresent() && recipes.byKey(awp).isPresent() && recipes.byKey(ammo).isPresent(),
+                "TaCZ gun smith recipes loaded");
+        h.assertFalse(GunSkillLock.allowed(player, glock), "pistol locked without the branch");
+        h.assertTrue(GunSkillLock.allowed(player, ammo), "ammo is never locked");
+        player.addTag("lazarus_arma_pistola");
+        h.assertTrue(GunSkillLock.allowed(player, glock), "Pistolas unlocks the Glock");
+        h.assertFalse(GunSkillLock.allowed(player, awp), "Pistolas does not unlock sniper rifles");
+        player.addTag("lazarus_arma_precisao");
+        h.assertTrue(GunSkillLock.allowed(player, awp), "Rifles de precisão unlocks the AWP");
+        ResourceLocation silencer = new ResourceLocation("tacz", "attachments/muzzle_silencer_mirage");
+        ResourceLocation scope = new ResourceLocation("tacz", "attachments/scope_acog_ta31");
+        h.assertTrue(recipes.byKey(silencer).isPresent() && recipes.byKey(scope).isPresent(), "TaCZ attachment recipes loaded");
+        h.assertFalse(GunSkillLock.allowed(player, silencer), "silencer locked without Bocais");
+        player.addTag("lazarus_acessorio_bocal");
+        h.assertTrue(GunSkillLock.allowed(player, silencer), "Bocais unlocks silencers");
+        h.assertFalse(GunSkillLock.allowed(player, scope), "Bocais does not unlock scopes");
+        finish(h, player);
+    }
+
     @GameTest(template = "arena", batch = "escort_expiry", timeoutTicks = 120)
     public static void escortEndsWhenTimeRunsOut(GameTestHelper h) {
         ServerPlayer owner = player(h, 10, 10);
