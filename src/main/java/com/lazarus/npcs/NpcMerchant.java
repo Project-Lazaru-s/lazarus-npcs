@@ -69,16 +69,28 @@ final class NpcMerchant implements Merchant {
     }
 
     static final int HAVEN_DISCOUNT_STANDING = 10;
+    /** Negotiation skill tags (Puffish Skills rewards in the modpack). */
+    static final String TAG_BARGAIN = "lazarus_barganha", TAG_HAGGLE = "lazarus_pechincha";
 
     /**
-     * Refuge traders give friends of the Haven 15% off. Applied to the shared offers on every opening, so the price
-     * follows whoever opened the screen last. ponytail: two players trading with one NPC at once share that price.
+     * Refuge traders give friends of the Haven 15% off; the Negotiation skills take more off. Applied to the shared
+     * offers on every opening, so the price follows whoever opened the screen last. ponytail: two players trading
+     * with one NPC at once share that price.
      */
     void applyDiscount(ServerPlayer player) {
         boolean discount = "haven".equals(NpcIdentity.faction(npc)) && NpcProfessions.base(npc) != null
                 && NpcReputation.get(player, "haven") >= HAVEN_DISCOUNT_STANDING;
-        for (var offer : getOffers())
-            offer.setSpecialPriceDiff(discount ? -Math.max(1, Math.round(offer.getBaseCostA().getCount() * 0.15f)) : 0);
+        boolean bargain = player.getTags().contains(TAG_BARGAIN), haggle = player.getTags().contains(TAG_HAGGLE);
+        for (var offer : getOffers()) {
+            int cost = offer.getBaseCostA().getCount();
+            int off = (discount ? Math.max(1, Math.round(cost * 0.15f)) : 0) + skillDiscount(cost, bargain, haggle);
+            offer.setSpecialPriceDiff(-Math.min(off, cost - 1));
+        }
+    }
+
+    /** Lábia takes 1 off every price, Pechincha another 10% (at least 1); the price never drops below 1. */
+    static int skillDiscount(int cost, boolean bargain, boolean haggle) {
+        return (bargain ? 1 : 0) + (haggle ? Math.max(1, Math.round(cost * 0.1f)) : 0);
     }
 
     void openTradeScreen(ServerPlayer player, Component title) {

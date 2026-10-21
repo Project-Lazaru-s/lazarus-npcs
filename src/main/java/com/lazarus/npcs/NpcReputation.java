@@ -54,6 +54,13 @@ final class NpcReputation {
 
     static int adjust(ServerPlayer player, String faction, int amount) { return adjust(player, faction, amount, null); }
 
+    /** Negotiation skill Boa fama (Puffish Skills tag in the modpack): reputation gains are half again as large. */
+    static final String TAG_GOOD_NAME = "lazarus_diplomata";
+
+    static int withSkill(ServerPlayer player, int amount) {
+        return amount > 0 && player.getTags().contains(TAG_GOOD_NAME) ? amount + Math.max(1, amount / 2) : amount;
+    }
+
     /** {@code reason} identifies API callers in the ReputationChanged event; null for Lazarus NPCs' own rules. */
     static int adjust(ServerPlayer player, String faction, int amount, net.minecraft.resources.ResourceLocation reason) {
         return adjust(player, faction, amount, reason, false);
@@ -67,6 +74,7 @@ final class NpcReputation {
     private static int adjust(ServerPlayer player, String faction, int amount,
                               net.minecraft.resources.ResourceLocation reason, boolean political) {
         if ("independent".equals(faction)) return 0;
+        amount = withSkill(player, amount);
         int current = get(player, faction);
         int updated = Math.max(-100, Math.min(100, current + amount));
         CompoundTag data = player.getPersistentData().getCompound(DATA_KEY);

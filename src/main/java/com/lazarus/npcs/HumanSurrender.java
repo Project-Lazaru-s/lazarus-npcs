@@ -44,6 +44,14 @@ final class HumanSurrender {
         return holding(mob) && root.hasUUID("SurrenderTo") && player.getUUID().equals(root.getUUID("SurrenderTo"));
     }
 
+    /** Negotiation skill Intimidação (Puffish Skills tag in the modpack): +15% to make looters and soldiers give up. */
+    static final String TAG_INTIMIDATE = "lazarus_intimidar";
+
+    static double chance(String kind, float healthFraction, int allies, int opponents, int losses, boolean intimidating) {
+        double chance = chance(kind, healthFraction, allies, opponents, losses);
+        return chance > 0 && intimidating ? Math.min(0.8, chance + 0.15) : chance;
+    }
+
     static double chance(String kind, float healthFraction, int allies, int opponents, int losses) {
         double base = switch (kind == null ? "" : kind) {
             case "looter" -> 0.45;
@@ -72,7 +80,8 @@ final class HumanSurrender {
         int opponents = (int) mob.level().getEntitiesOfClass(LivingEntity.class, mob.getBoundingBox().inflate(16),
                 entity -> entity.isAlive() && (entity instanceof Player p && !p.isSpectator() && !p.isCreative()
                         || "military".equals(NpcIdentity.role(entity)) || NpcContracts.contract(entity) != null)).size();
-        double chance = chance(kind, after / mob.getMaxHealth(), allies, opponents, root.getInt("Losses"));
+        double chance = chance(kind, after / mob.getMaxHealth(), allies, opponents, root.getInt("Losses"),
+                player.getTags().contains(TAG_INTIMIDATE));
         if (mob.getRandom().nextDouble() < chance) {
             event.setAmount(Math.min(event.getAmount(), Math.max(0, mob.getHealth() - 1)));
             surrender(mob, kind, player);
