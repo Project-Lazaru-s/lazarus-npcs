@@ -1885,7 +1885,7 @@ public final class EventsScenarioGameTests {
     @GameTest(template = "arena", batch = "events_hideout_kit_catalogue", timeoutTicks = 20)
     public static void everyHideoutKitPlacesAndEachUseHasVariety(GameTestHelper h) {
         ServerLevel level = h.getLevel();
-        for (int z : new int[] {1, 9, 17, 25}) for (int x = 0; x <= 31; x++) for (int y = 2; y <= 7; y++) h.setBlock(new BlockPos(x, y, z), Blocks.STONE_BRICKS);
+        for (int z = 0; z <= 28; z += 4) for (int x = 0; x <= 31; x++) for (int y = 2; y <= 6; y++) h.setBlock(new BlockPos(x, y, z), Blocks.STONE_BRICKS);
         try {
             java.util.Map<String, Object> kits = (java.util.Map<String, Object>) call("HideoutKits", "all",
                     new Class<?>[]{net.minecraft.server.MinecraftServer.class}, level.getServer());
@@ -1905,8 +1905,8 @@ public final class EventsScenarioGameTests {
             for (var entry : kits.entrySet()) {
                 int w = (int) width.invoke(entry.getValue());
                 if (x + w > 31) { x = 1; row++; }
-                h.assertTrue(row < 4, "room for every kit in the arena");
-                Object spot = spotOf.newInstance(h.absolutePos(new BlockPos(x, 2, 2 + row * 8)), net.minecraft.core.Direction.SOUTH);
+                h.assertTrue(row < 7, "room for every kit in the arena");
+                Object spot = spotOf.newInstance(h.absolutePos(new BlockPos(x, 2, 1 + row * 4)), net.minecraft.core.Direction.SOUTH);
                 int placed = (int) call("HideoutKits", "place", new Class<?>[]{ServerLevel.class, kitType, spotType, int.class, java.util.Set.class},
                         level, entry.getValue(), spot, 1, new java.util.HashSet<BlockPos>());
                 h.assertTrue(placed > 0, "kit " + entry.getKey() + " places blocks");
@@ -1976,6 +1976,50 @@ public final class EventsScenarioGameTests {
             done(h, inside);
             h.succeed();
         });
+    }
+
+    @SuppressWarnings("unchecked")
+    @GameTest(template = "arena", batch = "events_hideout_groups", timeoutTicks = 20)
+    public static void eachGroupHasItsOwnKitsAndStyle(GameTestHelper h) {
+        ServerLevel level = h.getLevel();
+        for (int x = 0; x <= 31; x++) for (int y = 2; y <= 6; y++) h.setBlock(new BlockPos(x, y, 4), Blocks.STONE_BRICKS);
+        try {
+            var server = level.getServer();
+            java.util.Map<String, Object> kits = (java.util.Map<String, Object>) call("HideoutKits", "all",
+                    new Class<?>[]{net.minecraft.server.MinecraftServer.class}, server);
+            java.util.Set<String> styled = (java.util.Set<String>) call("HideoutKits", "styled", new Class<?>[]{net.minecraft.server.MinecraftServer.class}, server);
+            Class<?> kitType = Class.forName("com.lazarus.events.HideoutKits$Kit"), spotType = Class.forName("com.lazarus.events.HideoutKits$Spot");
+            Method groups = kitType.getDeclaredMethod("groups");
+            groups.setAccessible(true);
+            for (String group : new String[] {"gang", "smugglers", "deserters", "hollow"}) {
+                h.assertTrue(styled.contains(group), group + " has a style");
+                List<Object> own = new java.util.ArrayList<>();
+                for (Object kit : kits.values()) if (((java.util.Set<String>) groups.invoke(kit)).contains(group)) own.add(kit);
+                h.assertTrue(own.size() >= 5, group + " has its own kits: " + own.size());
+                for (Object kit : own) {
+                    List<String> missing = (List<String>) call("HideoutKits", "unresolved", new Class<?>[]{ServerLevel.class, kitType, String.class}, level, kit, group);
+                    h.assertTrue(missing.isEmpty(), "every block of " + group + " resolves: " + missing);
+                }
+                List<Object> forUse = (List<Object>) call("HideoutKits", "forUse", new Class<?>[]{net.minecraft.server.MinecraftServer.class, String.class, String.class},
+                        server, "storage", group);
+                h.assertTrue(((java.util.Set<String>) groups.invoke(forUse.get(0))).contains(group), group + " picks its own storage kit first");
+            }
+            // The Hollow's style swaps the shared kits' lanterns for candles.
+            var spotOf = spotType.getDeclaredConstructor(BlockPos.class, net.minecraft.core.Direction.class);
+            spotOf.setAccessible(true);
+            Object spot = spotOf.newInstance(h.absolutePos(new BlockPos(10, 2, 5)), net.minecraft.core.Direction.SOUTH);
+            call("HideoutKits", "place", new Class<?>[]{ServerLevel.class, kitType, spotType, int.class, java.util.Set.class, String.class},
+                    level, kits.get("storage_stack"), spot, 1, new java.util.HashSet<BlockPos>(), "hollow");
+            boolean lantern = false, candle = false;
+            for (BlockPos pos : BlockPos.betweenClosed(h.absolutePos(new BlockPos(8, 2, 5)), h.absolutePos(new BlockPos(14, 6, 8)))) {
+                lantern |= level.getBlockState(pos).is(Blocks.LANTERN);
+                candle |= level.getBlockState(pos).is(Blocks.CANDLE);
+            }
+            h.assertTrue(!lantern && candle, "Hollow style: candles instead of lanterns");
+        } catch (ReflectiveOperationException failure) {
+            throw new IllegalStateException(failure);
+        }
+        h.succeed();
     }
 
     @GameTest(template = "arena", batch = "events_passage_api", timeoutTicks = 20)
