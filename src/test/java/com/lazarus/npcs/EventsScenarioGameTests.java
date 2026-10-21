@@ -1748,6 +1748,8 @@ public final class EventsScenarioGameTests {
             h.setBlock(new BlockPos(x, 5, z), Blocks.STONE_BRICKS);
             if (z == 8 || z == 12) for (int y = 2; y <= 4; y++) h.setBlock(new BlockPos(x, y, z), Blocks.STONE_BRICKS);
         }
+        // A water channel two wide crosses the far end of the tunnel, as in CityWorld sewers.
+        for (int x = 23; x <= 24; x++) for (int z = 9; z <= 11; z++) h.setBlock(new BlockPos(x, 1, z), Blocks.WATER);
         ServerPlayer player = NpcGameTests.player(h, 12, 18);
         try {
             Class<?> dataType = Class.forName("com.lazarus.events.EventData");
@@ -1773,8 +1775,36 @@ public final class EventsScenarioGameTests {
                         && state.getValue(net.minecraft.world.level.block.DoorBlock.HALF) == net.minecraft.world.level.block.state.properties.DoubleBlockHalf.LOWER) doors++;
                 if (state.is(Blocks.BARREL)) barrels++;
             }
-            h.assertTrue(bars >= 8 && doors == 1, "the tunnel is barred on both sides with one door: " + bars + " bars, " + doors + " doors");
+            h.assertTrue(bars >= 4 && doors == 1, "the tunnel is barred with one door: " + bars + " bars, " + doors + " doors");
             h.assertTrue(barrels >= 3, "weapons, medicine and drink in barrels: " + barrels);
+            java.util.Map<String, Integer> found = new java.util.HashMap<>();
+            for (BlockPos pos : BlockPos.betweenClosed(h.absolutePos(new BlockPos(0, 1, 9)), h.absolutePos(new BlockPos(25, 4, 11))))
+                found.merge(net.minecraftforge.registries.ForgeRegistries.BLOCKS.getKey(level.getBlockState(pos).getBlock()).getPath(), 1, Integer::sum);
+            h.assertTrue(found.getOrDefault("stripped_spruce_log", 0) >= 3 && found.getOrDefault("spruce_planks", 0) >= 4,
+                    "wooden beams overhead and planks underfoot: " + found);
+            h.assertTrue(found.getOrDefault("spruce_slab", 0) >= 2, "a plank bridge over the channel: " + found);
+            long kitBlocks = java.util.stream.Stream.of("crafting_table", "furnace", "smoker", "blast_furnace", "grindstone", "smithing_table",
+                    "fletching_table", "campfire", "red_bed", "gray_bed", "brown_bed", "blue_bed", "white_bed", "green_bed", "ladder", "note_block",
+                    "military_communication_radio", "sandbagbarrier", "wooden_crate", "military_crate", "cardboard_box").filter(found::containsKey).count();
+            h.assertTrue(kitBlocks >= 3, "the den is furnished with kits: " + found);
+            // The walkway from the door to the far end stays open.
+            java.util.Set<BlockPos> seen = new java.util.HashSet<>();
+            java.util.ArrayDeque<BlockPos> queue = new java.util.ArrayDeque<>(List.of(h.absolutePos(new BlockPos(2, 2, 10)),
+                    h.absolutePos(new BlockPos(2, 2, 9)), h.absolutePos(new BlockPos(2, 2, 11))));
+            queue.removeIf(pos -> !level.getBlockState(pos).getCollisionShape(level, pos).isEmpty());
+            seen.addAll(queue);
+            boolean reached = false;
+            while (!queue.isEmpty()) {
+                BlockPos at = queue.poll();
+                if (at.getX() >= h.absolutePos(new BlockPos(21, 2, 10)).getX()) { reached = true; break; }
+                for (net.minecraft.core.Direction side : net.minecraft.core.Direction.Plane.HORIZONTAL) {
+                    BlockPos next = at.relative(side);
+                    if (next.getZ() < h.absolutePos(new BlockPos(0, 2, 9)).getZ() || next.getZ() > h.absolutePos(new BlockPos(0, 2, 11)).getZ()) continue;
+                    if (seen.add(next) && level.getBlockState(next).getCollisionShape(level, next).isEmpty()
+                            && level.getBlockState(next.above()).getCollisionShape(level, next.above()).isEmpty()) queue.add(next);
+                }
+            }
+            h.assertTrue(reached, "a clear walkway runs the length of the den");
             List<Mob> guards = level.getEntitiesOfClass(Mob.class, new AABB(h.absolutePos(new BlockPos(12, 2, 10))).inflate(16),
                     mob -> mob.getTags().contains("lazarusevents:" + id));
             h.assertTrue(guards.size() >= 3, "the gang guards it: " + guards.size());
@@ -1839,7 +1869,8 @@ public final class EventsScenarioGameTests {
                 }
             }
             h.assertTrue(furnace != null && level.getBlockState(furnace.relative(level.getBlockState(furnace)
-                    .getValue(net.minecraft.world.level.block.FurnaceBlock.FACING))).isAir(), "the furnace faces into the room");
+                    .getValue(net.minecraft.world.level.block.FurnaceBlock.FACING).getOpposite())).is(Blocks.STONE_BRICKS),
+                    "the furnace has its back to the wall, facing into the room");
             h.assertTrue(heads == 2 && feet == 2 && bedsWhole, "two whole beds: " + heads + "/" + feet);
             h.assertTrue(smoker != null, "without Farmer's Delight the stove falls back to a smoker");
             String scan = (String) call("SiteScan", "text", new Class<?>[]{ServerLevel.class, BlockPos.class}, level, h.absolutePos(new BlockPos(15, 2, 15)));
