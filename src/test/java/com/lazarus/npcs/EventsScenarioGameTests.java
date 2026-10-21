@@ -1738,6 +1738,394 @@ public final class EventsScenarioGameTests {
         h.succeed();
     }
 
+    // ---- Sewers (territory events V1, phase T3)
+
+    @GameTest(template = "arena", batch = "events_smuggler_den", timeoutTicks = 40)
+    public static void smugglerDenGatesTheTunnelAndPaysWhenCleared(GameTestHelper h) {
+        ServerLevel level = h.getLevel();
+        // A roofed tunnel three wide, longer than the den's reach: the den cuts a stretch of it.
+        for (int x = 0; x <= 24; x++) for (int z = 8; z <= 12; z++) {
+            h.setBlock(new BlockPos(x, 5, z), Blocks.STONE_BRICKS);
+            if (z == 8 || z == 12) for (int y = 2; y <= 4; y++) h.setBlock(new BlockPos(x, y, z), Blocks.STONE_BRICKS);
+        }
+        // A water channel two wide crosses the far end of the tunnel, as in CityWorld sewers.
+        for (int x = 23; x <= 24; x++) for (int z = 9; z <= 11; z++) h.setBlock(new BlockPos(x, 1, z), Blocks.WATER);
+        ServerPlayer player = NpcGameTests.player(h, 12, 18);
+        try {
+            Class<?> dataType = Class.forName("com.lazarus.events.EventData");
+            Method get = dataType.getDeclaredMethod("get", ServerLevel.class);
+            get.setAccessible(true);
+            Object data = get.invoke(null, level);
+            Object outcome = call("LazarusEvents", "attempt", new Class<?>[]{ServerLevel.class, ServerPlayer.class, String.class,
+                    boolean.class, boolean.class, dataType}, level, player, "smuggler_den", true, true, data);
+            h.assertTrue(!success(outcome), "outside a CityWorld sewer the den is refused: " + outcome);
+            h.assertTrue(call("CityWorldSites", "findSewer", new Class<?>[]{ServerLevel.class, ServerPlayer.class, dataType, int.class, int.class},
+                    level, player, data, 80, 10) == null, "no CityWorld, no sewer search");
+
+            Object room = call("SmugglerDen", "space", new Class<?>[]{ServerLevel.class, BlockPos.class}, level, h.absolutePos(new BlockPos(12, 2, 10)));
+            h.assertTrue(room != null, "the tunnel stretch is a space");
+            UUID id = UUID.randomUUID();
+            h.assertTrue((boolean) call("SmugglerDen", "place", new Class<?>[]{ServerLevel.class,
+                    Class.forName("com.lazarus.events.BuildingHideout$Room"), int.class, UUID.class}, level, room, 1, id), "den placed");
+            int bars = 0, doors = 0, barrels = 0;
+            for (BlockPos pos : BlockPos.betweenClosed(h.absolutePos(new BlockPos(0, 2, 9)), h.absolutePos(new BlockPos(24, 3, 11)))) {
+                var state = level.getBlockState(pos);
+                if (state.is(Blocks.IRON_BARS)) bars++;
+                if (state.getBlock() instanceof net.minecraft.world.level.block.DoorBlock
+                        && state.getValue(net.minecraft.world.level.block.DoorBlock.HALF) == net.minecraft.world.level.block.state.properties.DoubleBlockHalf.LOWER) doors++;
+                if (state.is(Blocks.BARREL)) barrels++;
+            }
+            h.assertTrue(bars >= 4 && doors == 1, "the tunnel is barred with one door: " + bars + " bars, " + doors + " doors");
+            h.assertTrue(barrels >= 3, "weapons, medicine and drink in barrels: " + barrels);
+            java.util.Map<String, Integer> found = new java.util.HashMap<>();
+            for (BlockPos pos : BlockPos.betweenClosed(h.absolutePos(new BlockPos(0, 1, 9)), h.absolutePos(new BlockPos(25, 4, 11))))
+                found.merge(net.minecraftforge.registries.ForgeRegistries.BLOCKS.getKey(level.getBlockState(pos).getBlock()).getPath(), 1, Integer::sum);
+            h.assertTrue(found.getOrDefault("stripped_spruce_log", 0) >= 3 && found.getOrDefault("spruce_planks", 0) >= 4,
+                    "wooden beams overhead and planks underfoot: " + found);
+            h.assertTrue(found.getOrDefault("spruce_slab", 0) >= 2, "a plank bridge over the channel: " + found);
+            long kitBlocks = java.util.stream.Stream.of("crafting_table", "furnace", "smoker", "blast_furnace", "grindstone", "smithing_table",
+                    "fletching_table", "campfire", "red_bed", "gray_bed", "brown_bed", "blue_bed", "white_bed", "green_bed", "ladder", "note_block",
+                    "military_communication_radio", "sandbagbarrier", "wooden_crate", "military_crate", "cardboard_box").filter(found::containsKey).count();
+            h.assertTrue(kitBlocks >= 3, "the den is furnished with kits: " + found);
+            // The walkway from the door to the far end stays open.
+            java.util.Set<BlockPos> seen = new java.util.HashSet<>();
+            java.util.ArrayDeque<BlockPos> queue = new java.util.ArrayDeque<>(List.of(h.absolutePos(new BlockPos(2, 2, 10)),
+                    h.absolutePos(new BlockPos(2, 2, 9)), h.absolutePos(new BlockPos(2, 2, 11))));
+            queue.removeIf(pos -> !level.getBlockState(pos).getCollisionShape(level, pos).isEmpty());
+            seen.addAll(queue);
+            boolean reached = false;
+            while (!queue.isEmpty()) {
+                BlockPos at = queue.poll();
+                if (at.getX() >= h.absolutePos(new BlockPos(21, 2, 10)).getX()) { reached = true; break; }
+                for (net.minecraft.core.Direction side : net.minecraft.core.Direction.Plane.HORIZONTAL) {
+                    BlockPos next = at.relative(side);
+                    if (next.getZ() < h.absolutePos(new BlockPos(0, 2, 9)).getZ() || next.getZ() > h.absolutePos(new BlockPos(0, 2, 11)).getZ()) continue;
+                    if (seen.add(next) && level.getBlockState(next).getCollisionShape(level, next).isEmpty()
+                            && level.getBlockState(next.above()).getCollisionShape(level, next.above()).isEmpty()) queue.add(next);
+                }
+            }
+            h.assertTrue(reached, "a clear walkway runs the length of the den");
+            List<Mob> guards = level.getEntitiesOfClass(Mob.class, new AABB(h.absolutePos(new BlockPos(12, 2, 10))).inflate(16),
+                    mob -> mob.getTags().contains("lazarusevents:" + id));
+            h.assertTrue(guards.size() >= 3, "the gang guards it: " + guards.size());
+
+            Method add = dataType.getDeclaredMethod("add", UUID.class, String.class, BlockPos.class, long.class);
+            add.setAccessible(true);
+            add.invoke(data, id, "smuggler_den", h.absolutePos(new BlockPos(12, 2, 10)), level.getGameTime());
+            int before = NpcApi.reputation(player, "wardens");
+            Class<?>[] tick = {ServerLevel.class, dataType};
+            call("HostileHideouts", "tick", tick, level, data);
+            for (Mob guard : guards) guard.discard();
+            call("HostileHideouts", "tick", tick, level, data);
+            h.assertTrue(NpcApi.reputation(player, "wardens") > before, "clearing it pays the Wardens");
+        } catch (ReflectiveOperationException failure) {
+            throw new IllegalStateException(failure);
+        }
+        done(h, player);
+        h.succeed();
+    }
+
+    // ---- Helicopter crash (territory events V1, phase T4)
+
+    @GameTest(template = "arena", batch = "events_heli_crash", timeoutTicks = 70)
+    public static void helicopterCrashHasWreckLootPilotAndTimedSmoke(GameTestHelper h) {
+        loadedArena(h, () -> {
+            ServerLevel level = h.getLevel();
+            BlockPos center = h.absolutePos(new BlockPos(16, 2, 16));
+            for (int x = 11; x <= 21; x++) for (int z = 11; z <= 21; z++)
+                for (int y = 2; y <= 6; y++) h.setBlock(new BlockPos(x, y, z), Blocks.AIR);
+            h.assertTrue((boolean) call("HeliCrash", "flat", new Class<?>[]{ServerLevel.class, BlockPos.class}, level, center),
+                    "the flat arena accepts a crash despite having no sky");
+            h.setBlock(new BlockPos(20, 3, 16), Blocks.STONE_BRICKS);
+            h.assertTrue(!(boolean) call("HeliCrash", "flat", new Class<?>[]{ServerLevel.class, BlockPos.class}, level, center),
+                    "a solid obstacle rejects the crash site");
+            h.setBlock(new BlockPos(20, 3, 16), Blocks.AIR);
+            h.setBlock(new BlockPos(13, 2, 13), Blocks.DIRT);
+            h.setBlock(new BlockPos(18, 2, 19), Blocks.TALL_GRASS);
+            h.assertTrue((boolean) call("HeliCrash", "flat", new Class<?>[]{ServerLevel.class, BlockPos.class}, level, center),
+                    "a one-block bump of dirt and tall grass do not refuse the site");
+            java.util.Set<BlockPos> rotated = new java.util.HashSet<>();
+            for (int turn = 0; turn < 4; turn++) rotated.add((BlockPos) call("HeliCrash", "at",
+                    new Class<?>[]{BlockPos.class, int.class, int.class, int.class, int.class}, center, turn, 1, 0, 2));
+            h.assertTrue(rotated.size() == 4, "the wreck rotates into four distinct directions");
+            UUID id = UUID.randomUUID();
+            net.minecraft.nbt.CompoundTag memory = (net.minecraft.nbt.CompoundTag) call("HeliCrash", "place",
+                    new Class<?>[]{ServerLevel.class, BlockPos.class, int.class, int.class, UUID.class, boolean.class},
+                    level, center, 1, 2, id, true);
+            h.assertTrue(memory != null, "the wreck is placed");
+            BlockPos fire = BlockPos.of(memory.getLong("Fire"));
+            h.assertTrue(level.getBlockState(fire).is(Blocks.FIRE) && level.getBlockState(fire.below()).is(Blocks.NETHERRACK),
+                    "fire burns only over hidden netherrack");
+            h.assertTrue(memory.getLongArray("Smoke").length == 2, "two signal campfires are remembered");
+            for (long packed : memory.getLongArray("Smoke")) {
+                BlockPos camp = BlockPos.of(packed);
+                h.assertTrue(level.getBlockState(camp).is(Blocks.CAMPFIRE)
+                        && level.getBlockState(camp).getValue(net.minecraft.world.level.block.CampfireBlock.SIGNAL_FIRE)
+                        && level.getBlockState(camp.below()).is(Blocks.HAY_BLOCK), "signal smoke stands on hay");
+            }
+            int steel = 0, glass = 0, blades = 0;
+            for (BlockPos pos : BlockPos.betweenClosed(center.offset(-5, 0, -5), center.offset(5, 3, 5))) {
+                if (level.getBlockState(pos).is(Blocks.IRON_BLOCK)) steel++;
+                if (level.getBlockState(pos).is(Blocks.GLASS_PANE)) glass++;
+                if (level.getBlockState(pos).is(Blocks.IRON_BARS)) blades++;
+            }
+            h.assertTrue(steel >= 8 && glass >= 3 && blades >= 10, "steel cabin, shattered glass and rotors: " + steel + "/" + glass + "/" + blades);
+            for (String loot : new String[] {"weaponairdrop2", "largeairdrop2"}) {
+                BlockPos crate = (BlockPos) call("HeliCrash", "at", new Class<?>[]{BlockPos.class, int.class, int.class, int.class, int.class},
+                        center, 1, loot.startsWith("weapon") ? 1 : -2, 0, loot.startsWith("weapon") ? -3 : 3);
+                h.assertTrue(level.getBlockEntity(crate) instanceof net.minecraft.world.level.block.entity.RandomizableContainerBlockEntity barrel
+                        && barrel.saveWithoutMetadata().getString("LootTable").equals("dyairdrop:chests/" + loot),
+                        "military crate has " + loot);
+            }
+            List<Mob> infected = level.getEntitiesOfClass(Mob.class, new AABB(center).inflate(10),
+                    mob -> mob.getTags().contains("lazarusevents:" + id) && mob.getTags().contains("lazarusevents:heli_horde"));
+            h.assertTrue(infected.size() >= 3 && infected.size() <= 4 && infected.stream().allMatch(m -> !m.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.HEAD).isEmpty()),
+                    "three or four uniformed infected guard the crash: " + infected.size());
+            Mob pilot = (Mob) level.getEntity(memory.getUUID("Pilot"));
+            h.assertTrue(pilot != null && pilot.getTags().contains("lazarusevents:" + id)
+                    && NpcApi.assignment(pilot).map(a -> a.order() == ScenarioOrder.WAIT).orElse(false), "wounded pilot waits for rescue");
+            ServerPlayer player = NpcGameTests.player(h, 16, 18);
+            try {
+                Class<?> dataType = Class.forName("com.lazarus.events.EventData");
+                Method get = dataType.getDeclaredMethod("get", ServerLevel.class);
+                get.setAccessible(true);
+                Object data = get.invoke(null, level);
+                Method add = dataType.getDeclaredMethod("add", UUID.class, String.class, BlockPos.class, long.class);
+                add.setAccessible(true);
+                Object encounter = add.invoke(data, id, "heli_crash", center, level.getGameTime());
+                Class<?> encounterType = Class.forName("com.lazarus.events.EventData$Encounter");
+                Field stateField = encounterType.getDeclaredField("data"), createdField = encounterType.getDeclaredField("created");
+                stateField.setAccessible(true);
+                createdField.setAccessible(true);
+                net.minecraft.nbt.CompoundTag state = (net.minecraft.nbt.CompoundTag) stateField.get(encounter);
+                state.merge(memory);
+                var offered = NpcApi.offerTask(player, pilot, new ResourceLocation("lazarusevents", "heli_pilot_rescue"), id,
+                        net.minecraft.core.GlobalPos.of(level.dimension(), center.offset(20, 0, 0)));
+                h.assertTrue(offered.ok() && NpcApi.encounterTask(player).isPresent(), "pilot offers an escort task: " + offered.message());
+                while (infected.size() < 12) {
+                    Mob extra = (Mob) call("LazarusEvents", "spawn", new Class<?>[]{ServerLevel.class, BlockPos.class, String.class, UUID.class, boolean.class},
+                            level, center.offset(5, 0, 5), "minecraft:zombie", id, false);
+                    h.assertTrue(extra != null, "extra horde member spawns");
+                    extra.addTag("lazarusevents:heli_horde");
+                    infected.add(extra);
+                }
+                state.putLong("NextHorde", level.getGameTime());
+                call("HeliCrash", "tick", new Class<?>[]{ServerLevel.class, dataType}, level, data);
+                h.assertTrue(level.getEntitiesOfClass(Mob.class, new AABB(center).inflate(64),
+                        mob -> mob.isAlive() && mob.getTags().contains("lazarusevents:" + id)
+                                && mob.getTags().contains("lazarusevents:heli_horde")).size() == 12, "horde stops at 12 alive");
+                createdField.setLong(encounter, level.getGameTime() - 24_000);
+                call("HeliCrash", "tick", new Class<?>[]{ServerLevel.class, dataType}, level, data);
+                h.assertTrue(level.getBlockState(fire).isAir(), "fire goes out after one day");
+                createdField.setLong(encounter, level.getGameTime() - 48_000);
+                call("HeliCrash", "tick", new Class<?>[]{ServerLevel.class, dataType}, level, data);
+                for (long packed : memory.getLongArray("Smoke")) h.assertTrue(!level.getBlockState(BlockPos.of(packed))
+                        .getValue(net.minecraft.world.level.block.CampfireBlock.LIT), "signal smoke goes out after two days");
+            } catch (ReflectiveOperationException failure) {
+                throw new IllegalStateException(failure);
+            }
+            done(h, player);
+            h.succeed();
+        });
+    }
+
+    // ---- Lived-in hideouts (territory events V1, phase T3+)
+
+    @SuppressWarnings("unchecked")
+    @GameTest(template = "arena", batch = "events_hideout_kits", timeoutTicks = 20)
+    public static void hideoutKitsLoadFitAgainstWallsAndFallBack(GameTestHelper h) {
+        ServerLevel level = h.getLevel();
+        for (int x = 10; x <= 20; x++) for (int z = 10; z <= 20; z++) {
+            h.setBlock(new BlockPos(x, 5, z), Blocks.STONE_BRICKS);
+            if (x == 10 || x == 20 || z == 10 || z == 20)
+                for (int y = 2; y <= 4; y++) h.setBlock(new BlockPos(x, y, z), Blocks.STONE_BRICKS);
+        }
+        try {
+            java.util.Map<String, Object> kits = (java.util.Map<String, Object>) call("HideoutKits", "all",
+                    new Class<?>[]{net.minecraft.server.MinecraftServer.class}, level.getServer());
+            for (String name : new String[] {"workshop_bench", "workshop_grinder", "kitchen_stove", "kitchen_campfire", "dorm_beds",
+                    "dorm_cot", "storage_stack", "storage_shelf", "guard_post", "tent_canvas"})
+                h.assertTrue(kits.containsKey(name), "kit " + name + " loads: " + kits.keySet());
+            Object room = call("BuildingHideout", "room", new Class<?>[]{ServerLevel.class, BlockPos.class}, level, h.absolutePos(new BlockPos(15, 2, 15)));
+            Method cells = room.getClass().getDeclaredMethod("cells");
+            cells.setAccessible(true);
+            List<BlockPos> floor = (List<BlockPos>) cells.invoke(room);
+            java.util.Set<BlockPos> taken = new java.util.HashSet<>();
+            Class<?> kitType = Class.forName("com.lazarus.events.HideoutKits$Kit");
+            Class<?>[] furnish = {ServerLevel.class, kitType, java.util.Collection.class, java.util.Set.class, int.class};
+            for (String name : new String[] {"workshop_bench", "dorm_beds", "kitchen_stove", "storage_stack"})
+                h.assertTrue((boolean) call("HideoutKits", "furnish", furnish, level, kits.get(name), floor, taken, 1), name + " fits in the room");
+            BlockPos furnace = null, smoker = null;
+            int heads = 0, feet = 0;
+            boolean bedsWhole = true;
+            for (BlockPos pos : BlockPos.betweenClosed(h.absolutePos(new BlockPos(11, 2, 11)), h.absolutePos(new BlockPos(19, 4, 19)))) {
+                var state = level.getBlockState(pos);
+                if (state.is(Blocks.FURNACE)) furnace = pos.immutable();
+                if (state.is(Blocks.SMOKER)) smoker = pos.immutable();
+                if (state.getBlock() instanceof net.minecraft.world.level.block.BedBlock) {
+                    var part = state.getValue(net.minecraft.world.level.block.BedBlock.PART);
+                    if (part == net.minecraft.world.level.block.state.properties.BedPart.HEAD) {
+                        heads++;
+                        var foot = level.getBlockState(pos.relative(state.getValue(net.minecraft.world.level.block.BedBlock.FACING).getOpposite()));
+                        bedsWhole &= foot.is(state.getBlock()) && foot.getValue(net.minecraft.world.level.block.BedBlock.PART)
+                                == net.minecraft.world.level.block.state.properties.BedPart.FOOT;
+                    } else feet++;
+                }
+            }
+            h.assertTrue(furnace != null && level.getBlockState(furnace.relative(level.getBlockState(furnace)
+                    .getValue(net.minecraft.world.level.block.FurnaceBlock.FACING).getOpposite())).is(Blocks.STONE_BRICKS),
+                    "the furnace has its back to the wall, facing into the room");
+            h.assertTrue(heads == 2 && feet == 2 && bedsWhole, "two whole beds: " + heads + "/" + feet);
+            h.assertTrue(smoker != null, "without Farmer's Delight the stove falls back to a smoker");
+            String scan = (String) call("SiteScan", "text", new Class<?>[]{ServerLevel.class, BlockPos.class}, level, h.absolutePos(new BlockPos(15, 2, 15)));
+            h.assertTrue(scan.contains("Legend:") && scan.contains("minecraft:stone_bricks") && scan.contains("P"), "the scan describes the place");
+        } catch (ReflectiveOperationException failure) {
+            throw new IllegalStateException(failure);
+        }
+        h.succeed();
+    }
+
+    @SuppressWarnings("unchecked")
+    @GameTest(template = "arena", batch = "events_hideout_kit_catalogue", timeoutTicks = 20)
+    public static void everyHideoutKitPlacesAndEachUseHasVariety(GameTestHelper h) {
+        ServerLevel level = h.getLevel();
+        for (int z = 0; z <= 28; z += 4) for (int x = 0; x <= 31; x++) for (int y = 2; y <= 6; y++) h.setBlock(new BlockPos(x, y, z), Blocks.STONE_BRICKS);
+        try {
+            java.util.Map<String, Object> kits = (java.util.Map<String, Object>) call("HideoutKits", "all",
+                    new Class<?>[]{net.minecraft.server.MinecraftServer.class}, level.getServer());
+            Class<?> kitType = Class.forName("com.lazarus.events.HideoutKits$Kit"), spotType = Class.forName("com.lazarus.events.HideoutKits$Spot");
+            Method tags = kitType.getDeclaredMethod("tags"), width = kitType.getDeclaredMethod("width");
+            tags.setAccessible(true);
+            width.setAccessible(true);
+            var spotOf = spotType.getDeclaredConstructor(BlockPos.class, net.minecraft.core.Direction.class);
+            spotOf.setAccessible(true);
+            for (String use : new String[] {"workshop", "kitchen", "dorm", "storage", "guard", "camp"}) {
+                long variants = kits.values().stream().filter(kit -> {
+                    try { return ((java.util.Set<String>) tags.invoke(kit)).contains(use); } catch (ReflectiveOperationException e) { return false; }
+                }).count();
+                h.assertTrue(variants >= 3, use + " has at least 3 kits: " + variants);
+            }
+            int x = 1, row = 0;
+            for (var entry : kits.entrySet()) {
+                int w = (int) width.invoke(entry.getValue());
+                if (x + w > 31) { x = 1; row++; }
+                h.assertTrue(row < 7, "room for every kit in the arena");
+                Object spot = spotOf.newInstance(h.absolutePos(new BlockPos(x, 2, 1 + row * 4)), net.minecraft.core.Direction.SOUTH);
+                int placed = (int) call("HideoutKits", "place", new Class<?>[]{ServerLevel.class, kitType, spotType, int.class, java.util.Set.class},
+                        level, entry.getValue(), spot, 1, new java.util.HashSet<BlockPos>());
+                h.assertTrue(placed > 0, "kit " + entry.getKey() + " places blocks");
+                x += w + 1;
+            }
+        } catch (ReflectiveOperationException failure) {
+            throw new IllegalStateException(failure);
+        }
+        h.succeed();
+    }
+
+    @GameTest(template = "arena", batch = "events_hideout_rooms", timeoutTicks = 40)
+    public static void gangHideoutSpreadsThroughDoorsWithClearWalkways(GameTestHelper h) {
+        loadedArena(h, () -> {
+            // Two rooms sharing a wall with a door between them; the first has a doorway to the street.
+            for (int x = 10; x <= 24; x++) for (int z = 10; z <= 18; z++) {
+                h.setBlock(new BlockPos(x, 5, z), Blocks.STONE_BRICKS);
+                if (x == 10 || x == 18 || x == 24 || z == 10 || z == 18)
+                    for (int y = 2; y <= 4; y++) h.setBlock(new BlockPos(x, y, z), Blocks.STONE_BRICKS);
+            }
+            h.setBlock(new BlockPos(14, 2, 10), Blocks.AIR);
+            h.setBlock(new BlockPos(14, 3, 10), Blocks.AIR);
+            var door = Blocks.OAK_DOOR.defaultBlockState().setValue(net.minecraft.world.level.block.DoorBlock.FACING, net.minecraft.core.Direction.EAST);
+            h.setBlock(new BlockPos(18, 2, 14), door);
+            h.setBlock(new BlockPos(18, 3, 14), door.setValue(net.minecraft.world.level.block.DoorBlock.HALF,
+                    net.minecraft.world.level.block.state.properties.DoubleBlockHalf.UPPER));
+            h.setBlock(new BlockPos(12, 2, 16), Blocks.CHEST); // furniture the gang clears out
+            ServerPlayer inside = NpcGameTests.player(h, 14, 15);
+            try {
+                h.assertTrue(success(buildingAttempt(h, inside)), "placed in the rooms around the player");
+            } catch (ReflectiveOperationException failure) {
+                throw new IllegalStateException(failure);
+            }
+            ServerLevel level = h.getLevel();
+            java.util.Set<String> kitBlocks = java.util.Set.of("crafting_table", "furnace", "smoker", "blast_furnace", "grindstone", "smithing_table",
+                    "fletching_table", "campfire", "red_bed", "gray_bed", "brown_bed", "blue_bed", "light_gray_bed", "white_bed", "green_bed",
+                    "ladder", "note_block", "military_communication_radio", "sandbagbarrier", "wooden_crate", "military_crate", "cardboard_box",
+                    "spruce_stairs", "red_petrol_barrel", "petrol_barrel", "toxic_waste_barrel", "trash_bin");
+            int[] furnished = new int[2];
+            for (BlockPos pos : BlockPos.betweenClosed(h.absolutePos(new BlockPos(11, 2, 11)), h.absolutePos(new BlockPos(23, 4, 17)))) {
+                String id = net.minecraftforge.registries.ForgeRegistries.BLOCKS.getKey(level.getBlockState(pos).getBlock()).getPath();
+                if (kitBlocks.contains(id)) furnished[pos.getX() < h.absolutePos(new BlockPos(18, 0, 0)).getX() ? 0 : 1]++;
+            }
+            h.assertTrue(furnished[0] > 0 && furnished[1] > 0, "both rooms are furnished: " + furnished[0] + " / " + furnished[1]);
+            h.assertTrue(level.getBlockState(h.absolutePos(new BlockPos(18, 2, 14))).getBlock() instanceof net.minecraft.world.level.block.DoorBlock,
+                    "the door between the rooms stays");
+            h.assertTrue(!level.getBlockState(h.absolutePos(new BlockPos(12, 2, 16))).is(Blocks.CHEST), "the old furniture is cleared");
+            // From the street doorway, through the door, to the back room: always a way through.
+            java.util.Set<BlockPos> seen = new java.util.HashSet<>();
+            java.util.ArrayDeque<BlockPos> queue = new java.util.ArrayDeque<>(List.of(h.absolutePos(new BlockPos(14, 2, 11))));
+            seen.addAll(queue);
+            boolean reached = false;
+            while (!queue.isEmpty()) {
+                BlockPos at = queue.poll();
+                if (at.getX() > h.absolutePos(new BlockPos(19, 0, 0)).getX()) { reached = true; break; }
+                for (net.minecraft.core.Direction side : net.minecraft.core.Direction.Plane.HORIZONTAL) {
+                    BlockPos next = at.relative(side);
+                    var state = level.getBlockState(next);
+                    boolean open = state.getBlock() instanceof net.minecraft.world.level.block.DoorBlock
+                            || state.getCollisionShape(level, next).isEmpty() && level.getBlockState(next.above()).getCollisionShape(level, next.above()).isEmpty();
+                    if (open && seen.add(next) && next.getX() >= h.absolutePos(new BlockPos(11, 0, 0)).getX()
+                            && next.getZ() >= h.absolutePos(new BlockPos(0, 0, 11)).getZ() && next.getZ() <= h.absolutePos(new BlockPos(0, 0, 17)).getZ())
+                        queue.add(next);
+                }
+            }
+            h.assertTrue(reached, "a clear walkway leads through the door to the back room");
+            done(h, inside);
+            h.succeed();
+        });
+    }
+
+    @SuppressWarnings("unchecked")
+    @GameTest(template = "arena", batch = "events_hideout_groups", timeoutTicks = 20)
+    public static void eachGroupHasItsOwnKitsAndStyle(GameTestHelper h) {
+        ServerLevel level = h.getLevel();
+        for (int x = 0; x <= 31; x++) for (int y = 2; y <= 6; y++) h.setBlock(new BlockPos(x, y, 4), Blocks.STONE_BRICKS);
+        try {
+            var server = level.getServer();
+            java.util.Map<String, Object> kits = (java.util.Map<String, Object>) call("HideoutKits", "all",
+                    new Class<?>[]{net.minecraft.server.MinecraftServer.class}, server);
+            java.util.Set<String> styled = (java.util.Set<String>) call("HideoutKits", "styled", new Class<?>[]{net.minecraft.server.MinecraftServer.class}, server);
+            Class<?> kitType = Class.forName("com.lazarus.events.HideoutKits$Kit"), spotType = Class.forName("com.lazarus.events.HideoutKits$Spot");
+            Method groups = kitType.getDeclaredMethod("groups");
+            groups.setAccessible(true);
+            for (String group : new String[] {"gang", "smugglers", "deserters", "hollow"}) {
+                h.assertTrue(styled.contains(group), group + " has a style");
+                List<Object> own = new java.util.ArrayList<>();
+                for (Object kit : kits.values()) if (((java.util.Set<String>) groups.invoke(kit)).contains(group)) own.add(kit);
+                h.assertTrue(own.size() >= 5, group + " has its own kits: " + own.size());
+                for (Object kit : own) {
+                    List<String> missing = (List<String>) call("HideoutKits", "unresolved", new Class<?>[]{ServerLevel.class, kitType, String.class}, level, kit, group);
+                    h.assertTrue(missing.isEmpty(), "every block of " + group + " resolves: " + missing);
+                }
+                List<Object> forUse = (List<Object>) call("HideoutKits", "forUse", new Class<?>[]{net.minecraft.server.MinecraftServer.class, String.class, String.class},
+                        server, "storage", group);
+                h.assertTrue(((java.util.Set<String>) groups.invoke(forUse.get(0))).contains(group), group + " picks its own storage kit first");
+            }
+            // The Hollow's style swaps the shared kits' lanterns for candles.
+            var spotOf = spotType.getDeclaredConstructor(BlockPos.class, net.minecraft.core.Direction.class);
+            spotOf.setAccessible(true);
+            Object spot = spotOf.newInstance(h.absolutePos(new BlockPos(10, 2, 5)), net.minecraft.core.Direction.SOUTH);
+            call("HideoutKits", "place", new Class<?>[]{ServerLevel.class, kitType, spotType, int.class, java.util.Set.class, String.class},
+                    level, kits.get("storage_stack"), spot, 1, new java.util.HashSet<BlockPos>(), "hollow");
+            boolean lantern = false, candle = false;
+            for (BlockPos pos : BlockPos.betweenClosed(h.absolutePos(new BlockPos(8, 2, 5)), h.absolutePos(new BlockPos(14, 6, 8)))) {
+                lantern |= level.getBlockState(pos).is(Blocks.LANTERN);
+                candle |= level.getBlockState(pos).is(Blocks.CANDLE);
+            }
+            h.assertTrue(!lantern && candle, "Hollow style: candles instead of lanterns");
+        } catch (ReflectiveOperationException failure) {
+            throw new IllegalStateException(failure);
+        }
+        h.succeed();
+    }
+
     @GameTest(template = "arena", batch = "events_passage_api", timeoutTicks = 20)
     public static void passageOnlyForTollTakers(GameTestHelper h) {
         ServerPlayer player = NpcGameTests.player(h, 10, 10);
