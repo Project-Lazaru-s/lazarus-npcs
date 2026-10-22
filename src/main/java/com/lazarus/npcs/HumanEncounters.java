@@ -51,10 +51,14 @@ final class HumanEncounters {
         };
     }
 
-    /** The group's name in the world: looters carry the gang that holds these streets. */
+    /** Persistent tag on a gang's bounty hunter (Lazarus Events) naming the gang it hunts for, wherever it walks. */
+    static final String GANG_TAG = "LazarusGang";
+
+    /** The group's name in the world: looters carry the gang they hunt for, or the gang that holds these streets. */
     static String title(LivingEntity npc, String kind) {
         if (!"looter".equals(kind) || !(npc.level() instanceof net.minecraft.server.level.ServerLevel level)) return label(kind);
-        return label(kind) + " (" + com.lazarus.npcs.api.HostileGroups.gang(level, npc.blockPosition()) + ")";
+        String gang = npc.getPersistentData().getString(GANG_TAG);
+        return label(kind) + " (" + (gang.isEmpty() ? com.lazarus.npcs.api.HostileGroups.gang(level, npc.blockPosition()) : gang) + ")";
     }
 
     static String demand(String kind) {
